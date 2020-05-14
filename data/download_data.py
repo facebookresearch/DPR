@@ -275,6 +275,10 @@ def download_resource(s3_url: str, original_ext: str, compressed: bool, resource
 
     local_file = os.path.join(save_root, path_names[-1] + ('.tmp' if compressed else original_ext))
 
+    if os.path.exists(local_file):
+        print('File already exist ', local_file)
+        return save_root
+
     wget.download(s3_url, out=local_file)
 
     print('Saved to ', local_file)
@@ -289,6 +293,11 @@ def download_resource(s3_url: str, original_ext: str, compressed: bool, resource
 def download_file(s3_url: str, out_dir: str, file_name: str):
     print('Loading from ', s3_url)
     local_file = os.path.join(out_dir, file_name)
+
+    if os.path.exists(local_file):
+        print('File already exist ', local_file)
+        return
+
     wget.download(s3_url, out=local_file)
     print('Saved to ', local_file)
 
