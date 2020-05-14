@@ -6,9 +6,9 @@ It is based on [this](https://arxiv.org/abs/2004.04906) research work and provid
 
 
 ### Features
-1. Dense retriever model based on bi-encoder architecture. 
+1. Dense retriever model is based on bi-encoder architecture. 
 2. Extractive Q&A reader&ranker joint model inspired by [this](https://arxiv.org/abs/1911.03868) paper.
-3. Related data pre- and post-processing tools.
+3. Related data pre- and post- processing tools.
 4. Dense retriever component for inference time logic based on FAISS index.
 
 
