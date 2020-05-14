@@ -9,7 +9,7 @@ It is based on [this](https://arxiv.org/abs/2004.04906) research work and provid
 1. Dense retriever model is based on bi-encoder architecture. 
 2. Extractive Q&A reader&ranker joint model inspired by [this](https://arxiv.org/abs/1911.03868) paper.
 3. Related data pre- and post- processing tools.
-4. Dense retriever component for inference time logic based on FAISS index.
+4. Dense retriever component for inference time logic is based on FAISS index.
 
 
 ### Installation
@@ -25,7 +25,7 @@ pip install .
 DPR is tested on Python 3.6+ and PyTorch 1.2.0+.
 DPR relies on third-party libraries for encoder code implementations. 
 It currently supports Huggingface BERT, Pytext BERT and Fairseq RoBERTa encoder models.
-Due to generality, of the tokenization process, DPR uses Huggingface tokenizers as of now. So Huggingface is the only required dependency, Pytext & Fairseq are optional. 
+Due to generality of the tokenization process, DPR uses Huggingface tokenizers as of now. So Huggingface is the only required dependency, Pytext & Fairseq are optional. 
 Install them separately if you want to use those encoders.
 
 
@@ -64,7 +64,7 @@ Elements' structure  for negative_ctxs & hard_negative_ctxs is exactly the same 
 The preprocessed data available for downloading also contains some extra attributes which may be useful for model modifications (like bm25 scores per passage). Still, they are not currently in use by DPR. 
 
 You can download prepared NQ dataset used in the paper by using 'data.retriever.nq' key prefix. Only dev & train subsets are available in this format.
-We also provide question & answers only CSV data files for all train/dev/test splits. Those are used for the model evaluation since our NQ preprocessing step loses a part of original samples set.
+We also provide question & answers only CSV data files for all train/dev/test splits. Those are used for the model evaluation since our NQ preprocessing step looses a part of original samples set.
 Use 'data.retriever.qas.*' resource keys to get respective sets for evaluation.
 
 ```bash
@@ -73,7 +73,7 @@ python data/download_data.py --resource data.retriever  [optional --output_dir {
 
 
 ### Retriever training
-Retriever training quality depends on its effective batch size. The one reported in the paper used 8 * 32GB GPUs. 
+Retriever training quality depends on its effective batch size. The one reported in the paper used 8 x 32GB GPUs. 
 In order to start training on one machine:
 ```bash
 python train_dense_encoder.py --encoder_model_type {hf_bert | pytext_bert | fairseq_roberta}  --pretrained_model_cfg {bert-base-uncased| roberta-base} --train_file {train files glob expression} --dev_file {dev files glob expression} --output_dir {dir to save checkpoints}
