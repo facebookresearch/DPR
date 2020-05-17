@@ -1,4 +1,4 @@
-# Dense Passage Rertriever
+# Dense Passage Retriever
 ------------------------------------------------------------------------------------------------------------------
 
 Dense Passage Retriever - is a set of tools and models for open-domain Q&A task. 
