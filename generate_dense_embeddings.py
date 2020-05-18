@@ -9,6 +9,9 @@
  Command line tool that produces embeddings for a large documents base based on the pretrained ctx & question encoders
  Supposed to be used in a 'sharded' way to speed up the process.
 """
+import os
+import pathlib
+
 import argparse
 import csv
 import logging
@@ -23,10 +26,14 @@ from dpr.models import init_biencoder_components
 from dpr.options import add_encoder_params, setup_args_gpu, print_args, set_encoder_params_from_state, \
     add_tokenizer_params, add_cuda_params
 from dpr.utils.data_utils import Tensorizer
-from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint
+from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint,move_to_device
 
 logger = logging.getLogger()
-
+logger.setLevel(logging.INFO)
+if (logger.hasHandlers()):
+    logger.handlers.clear()
+console = logging.StreamHandler()
+logger.addHandler(console)
 
 def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, tensorizer: Tensorizer,
                     insert_title: bool = True) -> List[Tuple[object, np.array]]:
@@ -39,9 +46,9 @@ def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, t
         batch_token_tensors = [tensorizer.text_to_tensor(ctx[1], title=ctx[2] if insert_title else None) for ctx in
                                ctx_rows[batch_start:batch_start + bsz]]
 
-        ctx_ids_batch = torch.stack(batch_token_tensors, dim=0)
-        ctx_seg_batch = torch.zeros_like(ctx_ids_batch)
-        ctx_attn_mask = tensorizer.get_attn_mask(ctx_ids_batch)
+        ctx_ids_batch = move_to_device(torch.stack(batch_token_tensors, dim=0),args.device)
+        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch),args.device)
+        ctx_attn_mask = move_to_device(tensorizer.get_attn_mask(ctx_ids_batch),args.device)
         with torch.no_grad():
             _, out, _ = model(ctx_ids_batch, ctx_seg_batch, ctx_attn_mask)
         out = out.cpu()
@@ -66,7 +73,8 @@ def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, t
 def main(args):
     saved_state = load_states_from_checkpoint(args.model_file)
     set_encoder_params_from_state(saved_state.encoder_params, args)
-
+    print_args(args)
+    
     tensorizer, encoder, _ = init_biencoder_components(args.encoder_model_type, args, inference_only=True)
 
     encoder = encoder.ctx_model
@@ -105,6 +113,7 @@ def main(args):
     data = gen_ctx_vectors(rows, encoder, tensorizer, True)
 
     file = args.out_file + '_' + str(args.shard_id)
+    pathlib.Path(os.path.dirname(file)).mkdir(parents=True, exist_ok=True)
     logger.info('Writing results to %s' % file)
     with open(file, mode='wb') as f:
         pickle.dump(data, f)
@@ -131,5 +140,5 @@ if __name__ == '__main__':
 
     setup_args_gpu(args)
 
-    print_args(args)
+    
     main(args)
