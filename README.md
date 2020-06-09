@@ -16,7 +16,7 @@ It is based on [this](https://arxiv.org/abs/2004.04906) research work and provid
 Installation from the source. Python's virtual or Conda environments are recommended.
 
 ```bash
-git clone git@github.com:fairinternal/DPR.git
+git clone git@github.com:facebookresearch/DPR.git
 cd DPR
 pip install .
 ```
