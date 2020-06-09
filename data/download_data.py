@@ -228,7 +228,7 @@ RESOURCES_MAP = {
     },
 
     'data.reader.trivia.multi-hybrid.test': {
-        's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/reader/trivia/multi-hybrid//test.0.pkl',
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/reader/trivia/multi-hybrid/test.0.pkl',
         'original_ext': '.pkl',
         'compressed': False,
         'desc': 'Reader model Trivia test dataset input data preprocessed from hybrid retriever results '
