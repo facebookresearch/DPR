@@ -14,6 +14,7 @@ import os
 import csv
 import glob
 import json
+import gzip
 import logging
 import pickle
 import time
@@ -134,12 +135,20 @@ def validate(passages: Dict[object, Tuple[str, str]], answers: List[List[str]],
 def load_passages(ctx_file: str) -> Dict[object, Tuple[str, str]]:
     docs = {}
     logger.info('Reading data from: %s', ctx_file)
-    with open(ctx_file) as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t', )
-        # file format: doc_id, doc_text, title
-        for row in reader:
-            if row[0] != 'id':
-                docs[row[0]] = (row[1], row[2])
+    if ctx_file.startswith(".gzip"):
+        with gzip.open(ctx_file) as tsvfile:
+            reader = csv.reader(tsvfile, delimiter='\t', )
+            # file format: doc_id, doc_text, title
+            for row in reader:
+                if row[0] != 'id':
+                    docs[row[0]] = (row[1], row[2])
+    else:
+        with open(ctx_file) as tsvfile:
+            reader = csv.reader(tsvfile, delimiter='\t', )
+            # file format: doc_id, doc_text, title
+            for row in reader:
+                if row[0] != 'id':
+                    docs[row[0]] = (row[1], row[2])
     return docs
 
 

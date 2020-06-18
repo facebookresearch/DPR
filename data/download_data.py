@@ -302,7 +302,7 @@ def download_file(s3_url: str, out_dir: str, file_name: str):
     print('Saved to ', local_file)
 
 
-def download(resource_key: str, out_dir: str = None):
+def download(resource_key: str, out_dir: str = None, keep_gzip: bool = False):
     if resource_key not in RESOURCES_MAP:
         # match by prefix
         resources = [k for k in RESOURCES_MAP.keys() if k.startswith(resource_key)]
@@ -319,11 +319,17 @@ def download(resource_key: str, out_dir: str = None):
     save_root_dir = None
     if isinstance(s3_url, list):
         for i, url in enumerate(s3_url):
-            save_root_dir = download_resource(url, download_info['original_ext'], download_info['compressed'],
-                                              '{}_{}'.format(resource_key, i), out_dir)
+            save_root_dir = download_resource(url,
+                                              download_info['original_ext'],
+                                              download_info['compressed'] and not keep_gzip,
+                                              '{}_{}'.format(resource_key, i),
+                                              out_dir)
     else:
-        save_root_dir = download_resource(s3_url, download_info['original_ext'], download_info['compressed'],
-                                          resource_key, out_dir)
+        save_root_dir = download_resource(s3_url,
+                                          download_info['original_ext'],
+                                          download_info['compressed'] and not keep_gzip,
+                                          resource_key,
+                                          out_dir)
 
     license_files = download_info.get('license_files', None)
     if not license_files:
@@ -338,13 +344,13 @@ def main():
 
     parser.add_argument("--output_dir", default="./", type=str,
                         help="The output directory to download file")
-
     parser.add_argument("--resource", type=str,
                         help="Resource name. See RESOURCES_MAP for all possible values")
-
+    parser.add_argument("--keep-gzip", action='store_true',
+                        help="Keep gzip instead of unzipping it")
     args = parser.parse_args()
     if args.resource:
-        download(args.resource, args.output_dir)
+        download(args.resource, args.output_dir, args.keep_gzip)
     else:
         print('Please specify resource value. Possible options are:')
         for k, v in RESOURCES_MAP.items():
