@@ -308,7 +308,7 @@ def download(resource_key: str, out_dir: str = None, keep_gzip: bool = False):
         resources = [k for k in RESOURCES_MAP.keys() if k.startswith(resource_key)]
         if resources:
             for key in resources:
-                download(key, out_dir)
+                download(key, out_dir, keep_gzip)
         else:
             print('no resources found for specified key')
         return
