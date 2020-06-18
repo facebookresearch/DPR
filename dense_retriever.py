@@ -10,6 +10,7 @@
 """
 
 import argparse
+import os
 import csv
 import glob
 import json
@@ -219,12 +220,19 @@ def main(args):
 
     retriever = DenseRetriever(encoder, args.batch_size, tensorizer, index)
 
+
     # index all passages
     ctx_files_pattern = args.encoded_ctx_file
     input_paths = glob.glob(ctx_files_pattern)
-    logger.info('Reading all passages data from files: %s', input_paths)
-    retriever.index_encoded_data(input_paths, buffer_size=index_buffer_sz)
 
+    index_path = "_".join(input_paths[0].split("_")[:-1])
+    if args.save_or_load_index and os.path.exists(index_path):
+        retriever.index.deserialize(index_path)
+    else:
+        logger.info('Reading all passages data from files: %s', input_paths)
+        retriever.index_encoded_data(input_paths, buffer_size=index_buffer_sz)
+        if args.save_or_load_index:
+            retriever.index.serialize(index_path)
     # get questions & answers
     questions = []
     question_answers = []
@@ -268,13 +276,14 @@ if __name__ == '__main__':
                         help='output .tsv file path to write results to ')
     parser.add_argument('--match', type=str, default='string', choices=['regex', 'string'],
                         help="Answer matching logic type")
-    parser.add_argument('--n-docs', type=int, default=5, help="Amount of top docs to return")
+    parser.add_argument('--n-docs', type=int, default=200, help="Amount of top docs to return")
     parser.add_argument('--validation_workers', type=int, default=16,
                         help="Number of parallel processes to validate results")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size for question encoder forward pass")
     parser.add_argument('--index_buffer', type=int, default=50000,
                         help="Temporal memory data buffer size (in samples) for indexer")
     parser.add_argument("--hnsw_index", action='store_true', help='If enabled, use inference time efficient HNSW index')
+    parser.add_argument("--save_or_load_index", action='store_true', help='If enabled, save index')
 
     args = parser.parse_args()
 

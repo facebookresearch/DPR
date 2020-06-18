@@ -123,13 +123,14 @@ def get_model_obj(model: nn.Module):
 
 
 def get_model_file(args, file_prefix) -> str:
+    if args.model_file and os.path.exists(args.model_file):
+        return args.model_file
+
     out_cp_files = glob.glob(os.path.join(args.output_dir, file_prefix + '*')) if args.output_dir else []
     logger.info('Checkpoint files %s', out_cp_files)
     model_file = None
 
-    if args.model_file and os.path.exists(args.model_file):
-        model_file = args.model_file
-    elif len(out_cp_files) > 0:
+    if len(out_cp_files) > 0:
         model_file = max(out_cp_files, key=os.path.getctime)
     return model_file
 
