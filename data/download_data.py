@@ -264,6 +264,8 @@ def unpack(gzip_file: str, out_file: str):
 
 def download_resource(s3_url: str, original_ext: str, compressed: bool, resource_key: str, out_dir: str) -> str:
     print('Loading from ', s3_url)
+    if not compressed and s3_url.endswith(".gz") and not original_ext.endswith(".gz"):
+        original_ext += ".gz"
 
     # create local dir
     path_names = resource_key.split('.')
