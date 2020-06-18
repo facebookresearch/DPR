@@ -199,7 +199,7 @@ Notes:
 
 In order to make an inference, run `train_reader.py` without specifying `train_file`. Make sure to specify `model_file` with the path to the checkpoint, `passages_per_question_predict` with number of passages per question (being used when saving the prediction file), and `eval_top_docs` with a list of numbers for number of passages per question which results to be printed. The example command line is as follows.
 
-```batch
+```bash
 python train_reader.py \
   --prediction_results_file {some dir}/results.json \
   --eval_top_docs 10 20 40 50 80 100 \
