@@ -197,7 +197,7 @@ Notes:
 
 ## Reader model inference
 
-In order to make an inference, run `train_reader.py` without specifying `train_file`. Make sure to specify `model_file` with the path to the checkpoint, `passages_per_question_predict` with number of passages per question (being used when saving the prediction file), and `eval_top_docs` with a list of numbers for number of passages per question which results to be printed. The example command line is as follows.
+In order to make an inference, run `train_reader.py` without specifying `train_file`. Make sure to specify `model_file` with the path to the checkpoint, `passages_per_question_predict` with number of passages per question (being used when saving the prediction file), and `eval_top_docs` with a list of top passages threshold values from which to choose question's answer span (to be printed as logs). The example command line is as follows.
 
 ```bash
 python train_reader.py \
