@@ -28,6 +28,14 @@ RESOURCES_MAP = {
         'compressed': True,
         'desc': 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
     },
+ 
+    'compressed-data.wikipedia_split.psgs_w100': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz',
+        'original_ext': '.tsv.gz',
+        'compressed': False,
+        'desc': 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
+    },
+ 
     'data.retriever.nq-dev': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz',
         'original_ext': '.json',
@@ -248,6 +256,64 @@ RESOURCES_MAP = {
         'compressed': False,
         'desc': 'Reader weights trained on Trivia multi hybrid retriever results and HF bert-base-uncased model'
     },
+ 
+    # extra checkpoints for EfficientQA competition
+    'checkpoint.reader.nq-single-seen_only.hf-bert-base': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-single-seen_only/hf_bert_base.cp',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'Reader weights trained on NQ-single retriever results and HF bert-base-uncased model, when only Wikipedia pages seen during training are considered'
+    },
+    'checkpoint.reader.nq-drqa.hf-bert-base': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-drqa/hf_bert_base.cp',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'Reader weights trained on DrQA results and HF bert-base-uncased model'
+    },
+    'checkpoint.reader.nq-drqa-seen_only.hf-bert-base': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-drqa-seen_only/hf_bert_base.cp',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'Reader weights trained on DrQA results and HF bert-base-uncased model, when only Wikipedia pages seen during training are considered'
+    },
+ 
+    # retrieval indexes
+    'checkpoint.indexes.single.nq.full-index-dpr': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/full.index.dpr',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DPR index on NQ-single retriever'
+    },
+    'checkpoint.indexes.single.nq.full-index-meta-dpr': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/full.index_meta.dpr',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DPR index on NQ-single retriever (metadata)'
+    },
+    'checkpoint.indexes.single.nq.seen-only-index-dpr': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index.dpr',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered'
+    },
+    'checkpoint.indexes.single.nq.seen-only-index-meta-dpr': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index_meta.dpr',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered (metadata)'
+    },
+    'checkpoint.indexes.single.drqa.nq.full': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/full-tfidf.npz',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DrQA index'
+    },
+    'checkpoint.indexes.single.drqa.nq.seen_only': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/seen_only-tfidf.npz',
+        'original_ext': '.cp',
+        'compressed': False,
+        'desc': 'DrQA index when only Wikipedia pages seen during training are considered'
+    },
 }
 
 
@@ -264,8 +330,6 @@ def unpack(gzip_file: str, out_file: str):
 
 def download_resource(s3_url: str, original_ext: str, compressed: bool, resource_key: str, out_dir: str) -> str:
     print('Loading from ', s3_url)
-    if not compressed and s3_url.endswith(".gz") and not original_ext.endswith(".gz"):
-        original_ext += ".gz"
 
     # create local dir
     path_names = resource_key.split('.')
@@ -304,13 +368,13 @@ def download_file(s3_url: str, out_dir: str, file_name: str):
     print('Saved to ', local_file)
 
 
-def download(resource_key: str, out_dir: str = None, keep_gzip: bool = False):
+def download(resource_key: str, out_dir: str = None):
     if resource_key not in RESOURCES_MAP:
         # match by prefix
         resources = [k for k in RESOURCES_MAP.keys() if k.startswith(resource_key)]
         if resources:
             for key in resources:
-                download(key, out_dir, keep_gzip)
+                download(key, out_dir)
         else:
             print('no resources found for specified key')
         return
@@ -323,13 +387,13 @@ def download(resource_key: str, out_dir: str = None, keep_gzip: bool = False):
         for i, url in enumerate(s3_url):
             save_root_dir = download_resource(url,
                                               download_info['original_ext'],
-                                              download_info['compressed'] and not keep_gzip,
+                                              download_info['compressed'],
                                               '{}_{}'.format(resource_key, i),
                                               out_dir)
     else:
         save_root_dir = download_resource(s3_url,
                                           download_info['original_ext'],
-                                          download_info['compressed'] and not keep_gzip,
+                                          download_info['compressed'],
                                           resource_key,
                                           out_dir)
 
@@ -348,11 +412,9 @@ def main():
                         help="The output directory to download file")
     parser.add_argument("--resource", type=str,
                         help="Resource name. See RESOURCES_MAP for all possible values")
-    parser.add_argument("--keep-gzip", action='store_true',
-                        help="Keep gzip instead of unzipping it")
     args = parser.parse_args()
     if args.resource:
-        download(args.resource, args.output_dir, args.keep_gzip)
+        download(args.resource, args.output_dir)
     else:
         print('Please specify resource value. Possible options are:')
         for k, v in RESOURCES_MAP.items():
