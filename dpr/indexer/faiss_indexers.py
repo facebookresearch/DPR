@@ -9,6 +9,7 @@
  FAISS-based index components for dense retriver
 """
 
+import os
 import logging
 import pickle
 from typing import List, Tuple
@@ -35,8 +36,12 @@ class DenseIndexer(object):
     def serialize(self, file: str):
         logger.info('Serializing index to %s', file)
 
-        index_file = file + '.index.dpr'
-        meta_file = file + '.index_meta.dpr'
+        if os.path.isdir(file):
+            index_file = file + "/index.dpr"
+            meta_file = file + "/index_meta.dpr"
+        else:
+            index_file = file + '.index.dpr'
+            meta_file = file + '.index_meta.dpr'
 
         faiss.write_index(self.index, index_file)
         with open(meta_file, mode='wb') as f:
@@ -45,8 +50,12 @@ class DenseIndexer(object):
     def deserialize_from(self, file: str):
         logger.info('Loading index from %s', file)
 
-        index_file = file + '.index.dpr'
-        meta_file = file + '.index_meta.dpr'
+        if os.path.isdir(file):
+            index_file = file + "/index.dpr"
+            meta_file = file + "/index_meta.dpr"
+        else:
+            index_file = file + '.index.dpr'
+            meta_file = file + '.index_meta.dpr'
 
         self.index = faiss.read_index(index_file)
         logger.info('Loaded index of type %s and size %d', type(self.index), self.index.ntotal)
