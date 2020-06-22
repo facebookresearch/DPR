@@ -1,11 +1,24 @@
-# Dense Passage Retriever
+# Dense Passage Retrieval
 
-Dense Passage Retriever (`DPR`) - is a set of tools and models for open-domain Q&A task. 
-It is based on [this](https://arxiv.org/abs/2004.04906) research work and provides state-of-the-art results for multiple Q&A datasets.
+Dense Passage Retrieval (`DPR`) - is a set of tools and models for state-of-the-art open-domain Q&A research.
+It is based on the following paper:
 
+
+
+Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, Wen-tau Yih, [Dense Passage Retrieval for Open-Domain Question Answering](https://arxiv.org/abs/2004.04906), Preprint 2020.
+
+If you find this paper or this code useful, please cite this paper:
+```
+@article{karpukhin2020dense,
+  title={Dense Passage Retrieval for Open-Domain Question Answering},
+  author={Karpukhin, Vladimir and O{\u{g}}uz, Barlas and Min, Sewon and Wu, Ledell and Edunov, Sergey and Chen, Danqi and Yih, Wen-tau},
+  journal={arXiv preprint arXiv:2004.04906},
+  year={2020}
+}
+```
 
 ## Features
-1. Dense retriever model is based on bi-encoder architecture. 
+1. Dense retriever model is based on bi-encoder architecture.
 2. Extractive Q&A reader&ranker joint model inspired by [this](https://arxiv.org/abs/1911.03868) paper.
 3. Related data pre- and post- processing tools.
 4. Dense retriever component for inference time logic is based on FAISS index.
@@ -22,9 +35,9 @@ pip install .
 ```
 
 DPR is tested on Python 3.6+ and PyTorch 1.2.0+.
-DPR relies on third-party libraries for encoder code implementations. 
+DPR relies on third-party libraries for encoder code implementations.
 It currently supports Huggingface BERT, Pytext BERT and Fairseq RoBERTa encoder models.
-Due to generality of the tokenization process, DPR uses Huggingface tokenizers as of now. So Huggingface is the only required dependency, Pytext & Fairseq are optional. 
+Due to generality of the tokenization process, DPR uses Huggingface tokenizers as of now. So Huggingface is the only required dependency, Pytext & Fairseq are optional.
 Install them separately if you want to use those encoders.
 
 
@@ -42,8 +55,8 @@ python data/download_data.py \
 The resource name matching is prefix-based. So if you need to download all data resources, just use --resource data.
 
 ## Retriever input data format
-The data format of the Retriever training data is JSON. 
-It contains pools of 2 types of negative passages per question, as well as positive passages and some additional information. 
+The data format of the Retriever training data is JSON.
+It contains pools of 2 types of negative passages per question, as well as positive passages and some additional information.
 
 ```
 [
@@ -61,8 +74,8 @@ It contains pools of 2 types of negative passages per question, as well as posit
 ]
 ```
 
-Elements' structure  for negative_ctxs & hard_negative_ctxs is exactly the same as for positive_ctxs. 
-The preprocessed data available for downloading also contains some extra attributes which may be useful for model modifications (like bm25 scores per passage). Still, they are not currently in use by DPR. 
+Elements' structure  for negative_ctxs & hard_negative_ctxs is exactly the same as for positive_ctxs.
+The preprocessed data available for downloading also contains some extra attributes which may be useful for model modifications (like bm25 scores per passage). Still, they are not currently in use by DPR.
 
 You can download prepared NQ dataset used in the paper by using 'data.retriever.nq' key prefix. Only dev & train subsets are available in this format.
 We also provide question & answers only CSV data files for all train/dev/test splits. Those are used for the model evaluation since our NQ preprocessing step looses a part of original samples set.
@@ -76,7 +89,7 @@ python data/download_data.py
 
 
 ## Retriever training
-Retriever training quality depends on its effective batch size. The one reported in the paper used 8 x 32GB GPUs. 
+Retriever training quality depends on its effective batch size. The one reported in the paper used 8 x 32GB GPUs.
 In order to start training on one machine:
 ```bash
 python train_dense_encoder.py
@@ -94,10 +107,10 @@ Notes:
 - Every evaluation saves a model checkpoint.
 - The best checkpoint is logged in the train process output.
 - Regular NLL classification loss validation for bi-encoder training can be replaced with average rank evaluation. It aggregates passage and question vectors from the input data passages pools, does large similarity matrix calculation for those representations and then averages the rank of the gold passage for each question. We found this metric more correlating with the final retrieval performance vs nll classification loss. Note however that this average rank validation works differently in DistributedDataParallel vs DataParallel PyTorch modes. See val_av_rank_* set of parameters to enable this mode and modify its settings.
-    
+
 See the section 'Best hyperparameter settings' below as e2e example for our best setups.
 
-## Generating representations for large documents set 
+## Retriever inference
 
 Generating representation vectors for the static documents dataset is a highly parallelizable process which can take up to a few days if computed on a single GPU. You might want to use multiple available GPU servers by running the script on each of them independently and specifying their own shards.
 
@@ -118,10 +131,11 @@ python dense_retriever.py \
 	--ctx_file  {path to all documents .tsv file} \
 	--qa_file {path to test|dev .csv file} \
 	--encoded_ctx_file "{encoded document files glob expression}" \
-	--out_file {path to output json file with results}
+	--out_file {path to output json file with results} \
+  --n-docs 200
 ```
 
-The tool writes retrieved results for subsequent reader model training into specified out_file. 
+The tool writes retrieved results for subsequent reader model training into specified out_file.
 It is a json with the following format:
 
 ```
@@ -141,7 +155,7 @@ It is a json with the following format:
 ```
 Results are sorted by their similarity score, from most relevant to least relevant.
 
-By default, dense_retriever uses exhaustive search process, but you can opt in to use HNSW FAISS index by --hnsw_index flag. 
+By default, dense_retriever uses exhaustive search process, but you can opt in to use HNSW FAISS index by --hnsw_index flag.
 Note that using this index may be useless from the research point of view since their fast retrieval process comes at the cost of much longer indexing time and higher RAM usage.
 The similarity score provided is the dot product in the (default) case of exhaustive search and L2 distance in a modified representations space in case of HNSW index.
 
@@ -173,13 +187,28 @@ python train_reader.py \
 	--output_dir {path to output dir}
 ```
 
-Notes: 
+Notes:
 - if you use pytext_bert or fairseq_roberta, you need to download pre-trained weights and specify --pretrained_file parameter. Specify the dir location of the downloaded files for 'pretrained.fairseq.roberta-base' resource prefix for RoBERTa model or the file path for pytext BERT (resource name 'pretrained.pytext.bert-base.model').
-- Reader training pipeline does model validation every --eval_step batches 
+- Reader training pipeline does model validation every --eval_step batches
 - As the bi-encoder, it saves model checkpoints on every validation
 - Like the bi-encoder, there is no stop condition besides a specified amount of epochs to train.
 - Like the bi-encoder, there is no best checkpoint selection logic, so one needs to select that based on dev set validation performance which is logged in the train process output.
-- Our current code only calculates the Exact Match metric. 
+- Our current code only calculates the Exact Match metric.
+
+## Reader model inference
+
+In order to make an inference, run `train_reader.py` without specifying `train_file`. Make sure to specify `model_file` with the path to the checkpoint, `passages_per_question_predict` with number of passages per question (being used when saving the prediction file), and `eval_top_docs` with a list of top passages threshold values from which to choose question's answer span (to be printed as logs). The example command line is as follows.
+
+```bash
+python train_reader.py \
+  --prediction_results_file {some dir}/results.json \
+  --eval_top_docs 10 20 40 50 80 100 \
+  --dev_file {path to data.retriever_results.nq.single.test file} \
+  --model_file {path to the reader checkpoint} \
+  --dev_batch_size 80 \
+  --passages_per_question_predict 100 \
+  --sequence_length 350
+```
 
 ## Distributed training
 Use Pytorch's distributed training launcher tool:
@@ -188,7 +217,7 @@ Use Pytorch's distributed training launcher tool:
 python -m torch.distributed.launch \
 	--nproc_per_node={WORLD_SIZE}  {non distributed scipt name & parameters}
 ```
-Note: 
+Note:
 - all batch size related parameters are specified per gpu in distributed mode(DistributedDataParallel) and for all available gpus in DataParallel (single node - multi gpu) mode.
 
 ## Best hyperparameter settings
@@ -229,7 +258,7 @@ python -m torch.distributed.launch \
 This takes about a day to complete the training for 40 epochs. It swiches to Average Rank validation on epoch 30 and it should be around 25 at the end.
 The best checkpoint for bi-encoder is usually the last, but it should not be so different if you take any after epoch ~ 25.
 
-### 3. Generate embeddings for Wikipedia. 
+### 3. Generate embeddings for Wikipedia.
 Just use instructions for "Generating representations for large documents set". It takes about 40 minutes to produce 21 mln passages representation vectors on 50 2 GPU servers.
 
 ### 4. Evaluate retrieval accuracy and generate top passage results for each of the train/dev/test datasets.
@@ -246,7 +275,7 @@ python dense_retriever.py \
 	--batch_size 64
 ```
 
-Adjust batch_size based on the available number of GPUs, 64 should work for 2 GPU server. 
+Adjust batch_size based on the available number of GPUs, 64 should work for 2 GPU server.
 
 ### 5. Reader training
 We trained reader model for large datasets using a single 8 GPU x 32 GB server.
@@ -272,13 +301,13 @@ python train_reader.py \
 	--output_dir {your save dir path}
 ```
 
-We found that using the learning rate above works best with static schedule, so one needs to stop training manually based on evaluation performance dynamics. 
+We found that using the learning rate above works best with static schedule, so one needs to stop training manually based on evaluation performance dynamics.
 Our best results were achieved on 16-18 training epochs or after ~60k model updates.
 
 We provide all input and intermediate results for e2e pipeline for NQ dataset and most of the similar resources for Trivia.
 
 ## Misc.
-- TREC validation requires regexp based matching. We support only retriever validation in regexp mode. See --math parameter options. 
+- TREC validation requires regexp based matching. We support only retriever validation in regexp mode. See --math parameter options.
 - WEbQ validation requires entity normalization, which is not included as of now.
 
 ## Reference
@@ -296,4 +325,4 @@ If you plan to use `DPR` in your project, please consider citing [our paper](htt
 ```
 
 ## License
-DPR is CC-BY-NC 4.0 licensed as of now. 
+DPR is CC-BY-NC 4.0 licensed as of now.

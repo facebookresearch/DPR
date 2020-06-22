@@ -491,7 +491,7 @@ def main():
     setup_args_gpu(args)
     set_seed(args)
     print_args(args)
-    
+
     trainer = ReaderTrainer(args)
 
     if args.train_file is not None:
