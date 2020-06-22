@@ -31,7 +31,7 @@ RESOURCES_MAP = {
  
     'compressed-data.wikipedia_split.psgs_w100': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz',
-        'original_ext': '.gz',
+        'original_ext': '.tsv.gz',
         'compressed': False,
         'desc': 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
     },
@@ -278,37 +278,37 @@ RESOURCES_MAP = {
     },
  
     # retrieval indexes
-    'checkpoint.indexes.single.nq.full-index-dpr': {
+    'indexes.single.nq.full.index': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/full.index.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever'
     },
-    'checkpoint.indexes.single.nq.full-index-meta-dpr': {
+    'indexes.single.nq.full.index_meta': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/full.index_meta.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever (metadata)'
     },
-    'checkpoint.indexes.single.nq.seen-only-index-dpr': {
+    'indexes.single.nq.seen_only.index': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered'
     },
-    'checkpoint.indexes.single.nq.seen-only-index-meta-dpr': {
+    'indexes.single.nq.seen_only.index_meta': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index_meta.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered (metadata)'
     },
-    'checkpoint.indexes.single.drqa.nq.full': {
+    'indexes.drqa.nq.full': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/full-tfidf.npz',
         'original_ext': '.npz',
         'compressed': False,
         'desc': 'DrQA index'
     },
-    'checkpoint.indexes.single.drqa.nq.seen_only': {
+    'indexes.drqa.nq.seen_only': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/seen_only-tfidf.npz',
         'original_ext': '.npz',
         'compressed': False,
