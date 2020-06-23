@@ -28,14 +28,14 @@ RESOURCES_MAP = {
         'compressed': True,
         'desc': 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
     },
- 
+
     'compressed-data.wikipedia_split.psgs_w100': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz',
         'original_ext': '.tsv.gz',
         'compressed': False,
         'desc': 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
     },
- 
+
     'data.retriever.nq-dev': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz',
         'original_ext': '.json',
@@ -256,27 +256,27 @@ RESOURCES_MAP = {
         'compressed': False,
         'desc': 'Reader weights trained on Trivia multi hybrid retriever results and HF bert-base-uncased model'
     },
- 
+
     # extra checkpoints for EfficientQA competition
-    'checkpoint.reader.nq-single-seen_only.hf-bert-base': {
+    'checkpoint.reader.nq-single-subset.hf-bert-base': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-single-seen_only/hf_bert_base.cp',
         'original_ext': '.cp',
         'compressed': False,
         'desc': 'Reader weights trained on NQ-single retriever results and HF bert-base-uncased model, when only Wikipedia pages seen during training are considered'
     },
-    'checkpoint.reader.nq-drqa.hf-bert-base': {
+    'checkpoint.reader.nq-tfidf.hf-bert-base': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-drqa/hf_bert_base.cp',
         'original_ext': '.cp',
         'compressed': False,
-        'desc': 'Reader weights trained on DrQA results and HF bert-base-uncased model'
+        'desc': 'Reader weights trained on TFIDF results and HF bert-base-uncased model'
     },
-    'checkpoint.reader.nq-drqa-seen_only.hf-bert-base': {
+    'checkpoint.reader.nq-tfidf-subset.hf-bert-base': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/reader/nq-drqa-seen_only/hf_bert_base.cp',
         'original_ext': '.cp',
         'compressed': False,
-        'desc': 'Reader weights trained on DrQA results and HF bert-base-uncased model, when only Wikipedia pages seen during training are considered'
+        'desc': 'Reader weights trained on TFIDF results and HF bert-base-uncased model, when only Wikipedia pages seen during training are considered'
     },
- 
+
     # retrieval indexes
     'indexes.single.nq.full.index': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/full.index.dpr',
@@ -290,29 +290,29 @@ RESOURCES_MAP = {
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever (metadata)'
     },
-    'indexes.single.nq.seen_only.index': {
+    'indexes.single.nq.subset.index': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered'
     },
-    'indexes.single.nq.seen_only.index_meta': {
+    'indexes.single.nq.subset.index_meta': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/single/nq/seen_only.index_meta.dpr',
         'original_ext': '.dpr',
         'compressed': False,
         'desc': 'DPR index on NQ-single retriever when only Wikipedia pages seen during training are considered (metadata)'
     },
-    'indexes.drqa.nq.full': {
+    'indexes.tfidf.nq.full': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/full-tfidf.npz',
         'original_ext': '.npz',
         'compressed': False,
-        'desc': 'DrQA index'
+        'desc': 'TFIDF index'
     },
-    'indexes.drqa.nq.seen_only': {
+    'indexes.tfidf.nq.subset': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/checkpoint/indexes/drqa/nq/seen_only-tfidf.npz',
         'original_ext': '.npz',
         'compressed': False,
-        'desc': 'DrQA index when only Wikipedia pages seen during training are considered'
+        'desc': 'TFIDF index when only Wikipedia pages seen during training are considered'
     },
 }
 
