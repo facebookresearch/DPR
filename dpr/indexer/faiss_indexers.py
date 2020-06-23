@@ -37,8 +37,8 @@ class DenseIndexer(object):
         logger.info('Serializing index to %s', file)
 
         if os.path.isdir(file):
-            index_file = file + "/index.dpr"
-            meta_file = file + "/index_meta.dpr"
+            index_file = os.path.join(file, "index.dpr")
+            meta_file = os.path.join(file, "index_meta.dpr")
         else:
             index_file = file + '.index.dpr'
             meta_file = file + '.index_meta.dpr'
@@ -51,8 +51,8 @@ class DenseIndexer(object):
         logger.info('Loading index from %s', file)
 
         if os.path.isdir(file):
-            index_file = file + "/index.dpr"
-            meta_file = file + "/index_meta.dpr"
+            index_file = os.path.join(file, "index.dpr")
+            meta_file = os.path.join(file, "index_meta.dpr")
         else:
             index_file = file + '.index.dpr'
             meta_file = file + '.index_meta.dpr'
