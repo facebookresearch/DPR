@@ -66,6 +66,20 @@ RESOURCES_MAP = {
         'desc': 'TriviaQA train subset with passages pools for the Retriever training'
     },
 
+    'data.retriever.squad1-train': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-squad1-train.json.gz',
+        'original_ext': '.json',
+        'compressed': True,
+        'desc': 'SQUAD 1.1 train subset with passages pools for the Retriever training'
+    },
+
+    'data.retriever.squad1-dev': {
+        's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-squad1-dev.json.gz',
+        'original_ext': '.json',
+        'compressed': True,
+        'desc': 'SQUAD 1.1 dev subset with passages pools for the Retriever train time validation'
+    },
+
     'data.retriever.qas.nq-dev': {
         's3_url': 'https://dl.fbaipublicfiles.com/dpr/data/retriever/nq-dev.qa.csv',
         'original_ext': '.csv',
