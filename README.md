@@ -248,8 +248,8 @@ python -m torch.distributed.launch \
 	--warmup_steps 1237 \
 	--batch_size 16 \
 	--do_lower_case \
-	--train_file "{glob expression to train files for 'data.retriever.nq' resource}" \
-	--dev_file {path to downloaded data.retriever.qas.nq-dev resource} \
+	--train_file "{glob expression to train files downloaded as 'data.retriever.nq-train' resource}" \
+	--dev_file {glob expression to train files downloaded as 'data.retriever.nq-dev' resource}} \
 	--output_dir {your output dir} \
 	--learning_rate 2e-05 \
 	--num_train_epochs 40 \
