@@ -122,6 +122,7 @@ python generate_dense_embeddings.py \
 	--out_file ${out files location + name PREFX}
 ```
 Note: you can use much large batch size here compared to training mode. For example, setting --batch_size 128 for 2 GPU(16gb) server should work fine.
+You can download already generated wikipedia embeddings (trained on NQ dataset) using resource key 'data.retriever_results.nq.single.wikipedia_passages'.
 
 ## Retriever validation against the entire set of documents:
 
