@@ -14,7 +14,7 @@ import logging
 import math
 import pickle
 import random
-from typing import List, Iterator, Callable
+from typing import List, Iterator, Callable, Tuple
 
 from torch import Tensor as T
 
@@ -59,6 +59,7 @@ class ShardedDataIterator(object):
     It fills the extra sample by just taking first samples in a shard.
     It can also optionally enforce identical batch size for all iterations (might be useful for DP mode).
     """
+
     def __init__(self, data: list, shard_id: int = 0, num_shards: int = 1, batch_size: int = 1, shuffle=True,
                  shuffle_seed: int = 0, offset: int = 0,
                  strict_batch_size: bool = False
@@ -96,6 +97,9 @@ class ShardedDataIterator(object):
     def total_data_len(self) -> int:
         return len(self.data)
 
+    def iterations_num(self) -> int:
+        return self.max_iterations - self.iteration
+
     def iterate_data(self, epoch: int = 0) -> Iterator[List]:
         if self.shuffle:
             # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
@@ -132,6 +136,54 @@ class ShardedDataIterator(object):
     def apply(self, visitor_func: Callable):
         for sample in self.data[self.shard_start_idx:self.shard_end_idx]:
             visitor_func(sample)
+
+
+class MultiSetDataIterator(object):
+    """
+    Iterator over multiple data sources. Useful when all samples form a single batch should be from the same dataset.
+    """
+
+    def __init__(self, datasets: List[ShardedDataIterator], shuffle_seed: int = 0, shuffle=True):
+        self.iterables = datasets
+        data_lengths = [it.total_data_len() for it in datasets]
+        self.total_data = sum(data_lengths)
+        self.shuffle_seed = shuffle_seed
+        self.shuffle = shuffle
+        self.iteration = 0
+        self.max_iterations = sum(ds.max_iterations for ds in datasets)
+
+    def total_data_len(self) -> int:
+        return self.total_data
+
+    def iterate_data(self, epoch: int = 0) -> Iterator[Tuple[List, int]]:
+        data_lengths = [it.iterations_num() for it in self.iterables]
+        # iterations_num = sum(data_lengths)
+
+        data_src_indices = []
+        for source, source_len in enumerate(data_lengths):
+            data_src_indices.extend([source] * source_len)
+
+        if self.shuffle:
+            # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
+            epoch_rnd = random.Random(self.shuffle_seed + epoch)
+            epoch_rnd.shuffle(data_src_indices)
+
+        iterators = [it.iterate_data(epoch=epoch) for it in self.iterables]
+
+        for i, source_idx in enumerate(data_src_indices):
+            it = iterators[source_idx]
+            next_item = next(it, None)
+            if next_item is not None:
+                self.iteration += 1
+                yield (next_item, source_idx)
+
+        [next(it, None) for it in iterators]
+
+        # reset the iteration status
+        self.iteration = 0
+
+    def get_iteration(self) -> int:
+        return self.iteration
 
 
 def normalize_question(question: str) -> str:

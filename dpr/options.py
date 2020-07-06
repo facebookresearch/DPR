@@ -46,8 +46,9 @@ def add_training_params(parser: argparse.ArgumentParser):
         Common parameters for training
     """
     add_cuda_params(parser)
-    parser.add_argument("--train_file", default=None, type=str, help="File pattern for the train set")
-    parser.add_argument("--dev_file", default=None, type=str, help="")
+    parser.add_argument("--train_files", default=None, nargs='+', type=str, help="File patterns for the train set(s)")
+    parser.add_argument("--dev_files", default=None, nargs='+', type=str,
+                        help="File patterns for the validation set(s)")
 
     parser.add_argument("--batch_size", default=2, type=int, help="Amount of questions per batch")
     parser.add_argument("--dev_batch_size", type=int, default=4,

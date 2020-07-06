@@ -17,19 +17,17 @@ import math
 import os
 import random
 import time
-
+from typing import Tuple, List
 
 import torch
-
-from typing import Tuple
-from torch import nn
 from torch import Tensor as T
+from torch import nn
 
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, BiEncoderNllLoss, BiEncoderBatch
 from dpr.options import add_encoder_params, add_training_params, setup_args_gpu, set_seed, print_args, \
     get_encoder_params_state, add_tokenizer_params, set_encoder_params_from_state
-from dpr.utils.data_utils import ShardedDataIterator, read_data_from_json_files, Tensorizer
+from dpr.utils.data_utils import ShardedDataIterator, read_data_from_json_files, Tensorizer, MultiSetDataIterator
 from dpr.utils.dist_utils import all_gather_list
 from dpr.utils.model_utils import setup_for_distributed_mode, move_to_device, get_schedule_linear, CheckpointState, \
     get_model_file, get_model_obj, load_states_from_checkpoint
@@ -81,10 +79,21 @@ class BiEncoderTrainer(object):
         if saved_state:
             self._load_saved_state(saved_state)
 
-    def get_data_iterator(self, path: str, batch_size: int, shuffle=True,
+    def get_data_iterator(self, path, batch_size: int, shuffle=True,
                           shuffle_seed: int = 0,
-                          offset: int = 0, upsample_rates: list = None) -> ShardedDataIterator:
+                          offset: int = 0, upsample_rates: list = None,
+                          ):  # -> ShardedDataIterator
+
+        if isinstance(path, list):
+            if len(path) > 1:
+                return self.get_multi_task_data_iterator(path, batch_size, shuffle=shuffle, shuffle_seed=shuffle_seed,
+                                                         offset=offset
+                                                         )
+            else:
+                path = path[0]
+
         data_files = glob.glob(path)
+        # TODO: unify upsample_rates with 'list' schema
         data = read_data_from_json_files(data_files, upsample_rates)
 
         # filter those without positive ctx
@@ -97,16 +106,25 @@ class BiEncoderTrainer(object):
                                    strict_batch_size=True,  # this is not really necessary, one can probably disable it
                                    )
 
+    def get_multi_task_data_iterator(self, paths: List[str], batch_size: int, shuffle=True,
+                                     shuffle_seed: int = 0,
+                                     offset: int = 0):  # MultiSetDataIterator
+        logger.info('Initializing multi task/set data %s', paths)
+        sharded_iterators = [self.get_data_iterator(path, batch_size, shuffle, shuffle_seed, offset) for path in paths]
+        return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle)
+
     def run_train(self, ):
         args = self.args
         upsample_rates = None
         if args.train_files_upsample_rates is not None:
             upsample_rates = eval(args.train_files_upsample_rates)
 
-        train_iterator = self.get_data_iterator(args.train_file, args.batch_size,
+        train_iterator = self.get_data_iterator(args.train_files, args.batch_size,
                                                 shuffle=True,
                                                 shuffle_seed=args.seed, offset=self.start_batch,
-                                                upsample_rates=upsample_rates)
+                                                upsample_rates=upsample_rates,
+
+                                                )
 
         logger.info("  Total iterations per epoch=%d", train_iterator.max_iterations)
         updates_per_epoch = train_iterator.max_iterations // args.gradient_accumulation_steps
@@ -157,7 +175,7 @@ class BiEncoderTrainer(object):
         logger.info('NLL validation ...')
         args = self.args
         self.biencoder.eval()
-        data_iterator = self.get_data_iterator(args.dev_file, args.dev_batch_size, shuffle=False)
+        data_iterator = self.get_data_iterator(args.dev_files, args.dev_batch_size, shuffle=False)
 
         total_loss = 0.0
         start_time = time.time()
@@ -166,12 +184,19 @@ class BiEncoderTrainer(object):
         num_other_negatives = args.other_negatives
         log_result_step = args.log_batch_step
         batches = 0
+
+        encoder_type_per_dataset = args.encoder_type_per_dataset
+        dataset = 0
         for i, samples_batch in enumerate(data_iterator.iterate_data()):
+            # tmp:
+            if isinstance(samples_batch, Tuple):
+                samples_batch, dataset = samples_batch
             biencoder_input = BiEncoder.create_biencoder_input(samples_batch, self.tensorizer,
                                                                True,
                                                                num_hard_negatives, num_other_negatives, shuffle=False)
 
-            loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_input, self.tensorizer, args)
+            loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_input, self.tensorizer, args,
+                                                       encoder_type=encoder_type_per_dataset[dataset])
             total_loss += loss.item()
             total_correct_predictions += correct_cnt
             batches += 1
@@ -204,7 +229,7 @@ class BiEncoderTrainer(object):
         self.biencoder.eval()
         distributed_factor = self.distributed_factor
 
-        data_iterator = self.get_data_iterator(args.dev_file, args.dev_batch_size, shuffle=False)
+        data_iterator = self.get_data_iterator(args.dev_files, args.dev_batch_size, shuffle=False)
 
         sub_batch_size = args.val_av_rank_bsz
         sim_score_f = BiEncoderNllLoss.get_similarity_function()
@@ -294,8 +319,7 @@ class BiEncoderTrainer(object):
         logger.info('Av.rank validation: average rank %s, total questions=%d', av_rank, q_num)
         return av_rank
 
-    def _train_epoch(self, scheduler, epoch: int, eval_step: int,
-                     train_data_iterator: ShardedDataIterator, ):
+    def _train_epoch(self, scheduler, epoch: int, eval_step: int, train_data_iterator: ShardedDataIterator):
 
         args = self.args
         rolling_train_loss = 0.0
@@ -310,7 +334,14 @@ class BiEncoderTrainer(object):
         self.biencoder.train()
         epoch_batches = train_data_iterator.max_iterations
         data_iteration = 0
+
+        encoder_type_per_dataset = args.encoder_type_per_dataset
+
+        dataset = 0
+
         for i, samples_batch in enumerate(train_data_iterator.iterate_data(epoch=epoch)):
+            if isinstance(samples_batch, Tuple):
+                samples_batch, dataset = samples_batch
 
             # to be able to resume shuffled ctx- pools
             data_iteration = train_data_iterator.get_iteration()
@@ -321,7 +352,8 @@ class BiEncoderTrainer(object):
                                                                shuffle_positives=args.shuffle_positive_ctx
                                                                )
 
-            loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_batch, self.tensorizer, args)
+            loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_batch, self.tensorizer, args,
+                                                       encoder_type=encoder_type_per_dataset[dataset])
 
             epoch_correct_predictions += correct_cnt
             epoch_loss += loss.item()
@@ -460,8 +492,8 @@ def _calc_loss(args, loss_function, local_q_vector, local_ctx_vectors, local_pos
     return loss, is_correct
 
 
-def _do_biencoder_fwd_pass(model: nn.Module, input: BiEncoderBatch, tensorizer: Tensorizer, args) -> (
-        torch.Tensor, int):
+def _do_biencoder_fwd_pass(model: nn.Module, input: BiEncoderBatch, tensorizer: Tensorizer, args,
+                           encoder_type: str) -> Tuple[torch.Tensor, int]:
     input = BiEncoderBatch(**move_to_device(input._asdict(), args.device))
 
     q_attn_mask = tensorizer.get_attn_mask(input.question_ids)
@@ -469,11 +501,11 @@ def _do_biencoder_fwd_pass(model: nn.Module, input: BiEncoderBatch, tensorizer: 
 
     if model.training:
         model_out = model(input.question_ids, input.question_segments, q_attn_mask, input.context_ids,
-                          input.ctx_segments, ctx_attn_mask)
+                          input.ctx_segments, ctx_attn_mask, encoder_type=encoder_type)
     else:
         with torch.no_grad():
             model_out = model(input.question_ids, input.question_segments, q_attn_mask, input.context_ids,
-                              input.ctx_segments, ctx_attn_mask)
+                              input.ctx_segments, ctx_attn_mask, encoder_type=encoder_type)
 
     local_q_vector, local_ctx_vectors = model_out
 
@@ -499,7 +531,7 @@ def main():
     add_training_params(parser)
     add_tokenizer_params(parser)
 
-    # biencoder specific training features
+    # bi-encoder specific training features
     parser.add_argument("--eval_per_epoch", default=1, type=int,
                         help="How many times it evaluates on dev set per epoch and saves a checkpoint")
 
@@ -509,6 +541,8 @@ def main():
 
     parser.add_argument("--fix_ctx_encoder", action='store_true')
     parser.add_argument("--shuffle_positive_ctx", action='store_true')
+    parser.add_argument('--encoder_type_per_dataset', nargs='+', type=str, default="mixed",
+                        help="Encoder training schemas per dataset. Options 'mixed' (default), 'q_only'.")
 
     # input/output src params
     parser.add_argument("--output_dir", default=None, type=str,
@@ -550,9 +584,11 @@ def main():
 
     trainer = BiEncoderTrainer(args)
 
-    if args.train_file is not None:
+    if args.train_files is not None:
+        if len(args.train_files) > 0:
+            assert len(args.encoder_type_per_dataset) == len(args.train_files)
         trainer.run_train()
-    elif args.model_file and args.dev_file:
+    elif args.model_file and args.dev_files:
         logger.info("No train files are specified. Run 2 types of validation for specified model file")
         trainer.validate_nll()
         trainer.validate_average_rank()

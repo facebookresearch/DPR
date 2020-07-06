@@ -469,7 +469,7 @@ def main():
                         help="The maximum length of an answer that can be generated. This is needed because the start "
                              "and end predictions are not conditioned on one another.")
     parser.add_argument('--eval_top_docs', nargs='+', type=int,
-                        help="top retrival passages thresholds to analyze prediction results for")
+                        help="Top retrieval passages thresholds to analyze prediction results for")
     parser.add_argument('--checkpoint_file_name', type=str, default='dpr_reader')
     parser.add_argument('--prediction_results_file', type=str, help='path to a file to write prediction results to')
 
