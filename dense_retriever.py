@@ -135,8 +135,8 @@ def validate(passages: Dict[object, Tuple[str, str]], answers: List[List[str]],
 def load_passages(ctx_file: str) -> Dict[object, Tuple[str, str]]:
     docs = {}
     logger.info('Reading data from: %s', ctx_file)
-    if ctx_file.startswith(".gz"):
-        with gzip.open(ctx_file) as tsvfile:
+    if ctx_file.endswith(".gz"):
+        with gzip.open(ctx_file, 'rt') as tsvfile:
             reader = csv.reader(tsvfile, delimiter='\t', )
             # file format: doc_id, doc_text, title
             for row in reader:
