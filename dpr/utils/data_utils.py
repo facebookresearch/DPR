@@ -130,7 +130,7 @@ class ShardedDataIterator(object):
         return self.iteration
 
     def apply(self, visitor_func: Callable):
-        for sample in self.data[self.shard_start_idx:self.shard_end_idx]:
+        for sample in self.data:
             visitor_func(sample)
 
 
