@@ -127,8 +127,8 @@ def _load_qrels(qrels_file: str, max_passages_per_q: int = 30) -> List[Tuple[int
                 result[qid] = q_info
 
             # tmp:
-            if len(result)>100:
-                break
+            #if len(result)>100:
+            #    break
 
     # convert to list
     return [(k, v[0], v[1]) for k, v in result.items()]
