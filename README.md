@@ -308,8 +308,8 @@ Our best results were achieved on 16-18 training epochs or after ~60k model upda
 We provide all input and intermediate results for e2e pipeline for NQ dataset and most of the similar resources for Trivia.
 
 ## Misc.
-- TREC validation requires regexp based matching. We support only retriever validation in regexp mode. See --math parameter options.
-- WEbQ validation requires entity normalization, which is not included as of now.
+- TREC validation requires regexp based matching. We support only retriever validation in the regexp mode. See --match parameter option.
+- WebQ validation requires entity normalization, which is not included as of now.
 
 ## Reference
 
