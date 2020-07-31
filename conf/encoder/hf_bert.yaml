@@ -1,0 +1,9 @@
+encoder:
+  encoder_model_type: hf_bert
+  pretrained_model_cfg: bert-base-uncased
+  pretrained_file:
+  model_file:
+  projection_dim: 0
+  sequence_length: 256
+  dropout: 0.1
+  fix_ctx_encoder: False

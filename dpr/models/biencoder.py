@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from torch import Tensor as T
 from torch import nn
 
+from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.data_utils import normalize_question
 
@@ -91,6 +92,7 @@ class BiEncoder(nn.Module):
 
         return q_pooled_out, ctx_pooled_out
 
+    # TODO delete once moved to the new method
     @classmethod
     def create_biencoder_input(cls,
                                samples: List,
@@ -131,26 +133,23 @@ class BiEncoder(nn.Module):
             hard_neg_ctxs = sample['hard_negative_ctxs']
             question = normalize_question(sample['question'])
 
-            logger.info('question=%s', question)
-
             if shuffle:
                 random.shuffle(neg_ctxs)
                 random.shuffle(hard_neg_ctxs)
 
-            neg_ctxs = neg_ctxs[0:num_other_negatives]
-            hard_neg_ctxs = hard_neg_ctxs[0:num_hard_negatives]
-
             if hard_neg_fallback and len(hard_neg_ctxs) == 0:
                 hard_neg_ctxs = neg_ctxs[0:num_hard_negatives]
+
+            neg_ctxs = neg_ctxs[0:num_other_negatives]
+            hard_neg_ctxs = hard_neg_ctxs[0:num_hard_negatives]
 
             all_ctxs = [positive_ctx] + neg_ctxs + hard_neg_ctxs
             hard_negatives_start_idx = 1
             hard_negatives_end_idx = 1 + len(hard_neg_ctxs)
 
             current_ctxs_len = len(ctx_tensors)
-
             sample_ctxs_tensors = [tensorizer.text_to_tensor(ctx['text'], title=ctx['title'] if (
-                                                                        insert_title and 'title' in ctx) else None)
+                    insert_title and 'title' in ctx) else None)
                                    for
                                    ctx in all_ctxs]
 
@@ -161,6 +160,90 @@ class BiEncoder(nn.Module):
                  range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
 
             question_tensors.append(tensorizer.text_to_tensor(question))
+
+        ctxs_tensor = torch.cat([ctx.view(1, -1) for ctx in ctx_tensors], dim=0)
+        questions_tensor = torch.cat([q.view(1, -1) for q in question_tensors], dim=0)
+
+        ctx_segments = torch.zeros_like(ctxs_tensor)
+        question_segments = torch.zeros_like(questions_tensor)
+
+        return BiEncoderBatch(questions_tensor, question_segments, ctxs_tensor, ctx_segments, positive_ctx_indices,
+                              hard_neg_ctx_indices, 'question')
+
+    @classmethod
+    def create_biencoder_input2(cls,
+                                samples: List[BiEncoderSample],
+                                tensorizer: Tensorizer,
+                                insert_title: bool,
+                                num_hard_negatives: int = 0,
+                                num_other_negatives: int = 0,
+                                shuffle: bool = True,
+                                shuffle_positives: bool = False,
+                                hard_neg_fallback: bool = True,
+                                query_token: str = None
+                                ) -> BiEncoderBatch:
+        """
+        Creates a batch of the biencoder training tuple.
+        :param samples: list of BiEncoderSample-s to create the batch for
+        :param tensorizer: components to create model input tensors from a text sequence
+        :param insert_title: enables title insertion at the beginning of the context sequences
+        :param num_hard_negatives: amount of hard negatives per question (taken from samples' pools)
+        :param num_other_negatives: amount of other negatives per question (taken from samples' pools)
+        :param shuffle: shuffles negative passages pools
+        :param shuffle_positives: shuffles positive passages pools
+        :return: BiEncoderBatch tuple
+        """
+        question_tensors = []
+        ctx_tensors = []
+        positive_ctx_indices = []
+        hard_neg_ctx_indices = []
+
+        for sample in samples:
+            # ctx+ & [ctx-] composition
+            # as of now, take the first(gold) ctx+ only
+
+            if shuffle and shuffle_positives:
+                positive_ctxs = sample.positive_passages
+                positive_ctx = positive_ctxs[np.random.choice(len(positive_ctxs))]
+            else:
+                positive_ctx = sample.positive_passages[0]
+
+            neg_ctxs = sample.negative_passages
+            hard_neg_ctxs = sample.hard_negative_passages
+            question = normalize_question(sample.query)
+
+            if shuffle:
+                random.shuffle(neg_ctxs)
+                random.shuffle(hard_neg_ctxs)
+
+            if hard_neg_fallback and len(hard_neg_ctxs) == 0:
+                hard_neg_ctxs = neg_ctxs[0:num_hard_negatives]
+
+            neg_ctxs = neg_ctxs[0:num_other_negatives]
+            hard_neg_ctxs = hard_neg_ctxs[0:num_hard_negatives]
+
+            all_ctxs = [positive_ctx] + neg_ctxs + hard_neg_ctxs
+            hard_negatives_start_idx = 1
+            hard_negatives_end_idx = 1 + len(hard_neg_ctxs)
+
+            current_ctxs_len = len(ctx_tensors)
+
+            sample_ctxs_tensors = [tensorizer.text_to_tensor(ctx.text, title=ctx.title if (
+                    insert_title and ctx.title) else None)
+                                   for
+                                   ctx in all_ctxs]
+
+            ctx_tensors.extend(sample_ctxs_tensors)
+            positive_ctx_indices.append(current_ctxs_len)
+            hard_neg_ctx_indices.append(
+                [i for i in
+                 range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
+
+
+            if query_token:
+                question_tensors.append(tensorizer.text_to_tensor(' '.join([query_token, question])))
+            else:
+                question_tensors.append(tensorizer.text_to_tensor(question))
 
         ctxs_tensor = torch.cat([ctx.view(1, -1) for ctx in ctx_tensors], dim=0)
         questions_tensor = torch.cat([q.view(1, -1) for q in question_tensors], dim=0)

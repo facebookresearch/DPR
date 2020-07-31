@@ -140,13 +140,12 @@ def setup_args_gpu(args):
     """
      Setup arguments CUDA, GPU & distributed training
     """
-
     if args.local_rank == -1 or args.no_cuda:  # single-node multi-gpu (or cpu) mode
-        device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+        device = str(torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"))
         args.n_gpu = torch.cuda.device_count()
     else:  # distributed mode
         torch.cuda.set_device(args.local_rank)
-        device = torch.device("cuda", args.local_rank)
+        device = str(torch.device("cuda", args.local_rank))
         torch.distributed.init_process_group(backend="nccl")
         args.n_gpu = 1
     args.device = device
@@ -156,10 +155,11 @@ def setup_args_gpu(args):
 
     logger.info(
         'Initialized host %s as d.rank %d on device=%s, n_gpu=%d, world size=%d', socket.gethostname(),
-        args.local_rank, device,
+        args.local_rank, args.device,
         args.n_gpu,
         args.distributed_world_size)
     logger.info("16-bits training: %s ", args.fp16)
+    return args
 
 
 def print_args(args):

@@ -13,6 +13,7 @@ import logging
 from typing import Tuple
 
 import torch
+import transformers
 from torch import Tensor as T
 from torch import nn
 from transformers.modeling_bert import BertConfig, BertModel
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_bert_biencoder_components(args, inference_only: bool = False, **kwargs):
+    # tmp
+    if hasattr(args, 'encoder'):
+        return get_bert_biencoder_components_hydra(args, inference_only=inference_only, **kwargs)
     dropout = args.dropout if hasattr(args, 'dropout') else 0.0
     question_encoder = HFBertEncoder.init_encoder(args.pretrained_model_cfg,
                                                   projection_dim=args.projection_dim, dropout=dropout, **kwargs)
@@ -47,6 +51,26 @@ def get_bert_biencoder_components(args, inference_only: bool = False, **kwargs):
     return tensorizer, biencoder, optimizer
 
 
+def get_bert_biencoder_components_hydra(args, inference_only: bool = False, **kwargs):
+    dropout = args.encoder.dropout if hasattr(args.encoder, 'dropout') else 0.0
+    question_encoder = HFBertEncoder.init_encoder(args.encoder.pretrained_model_cfg,
+                                                  projection_dim=args.encoder.projection_dim, dropout=dropout, **kwargs)
+    ctx_encoder = HFBertEncoder.init_encoder(args.encoder.pretrained_model_cfg,
+                                             projection_dim=args.encoder.projection_dim, dropout=dropout, **kwargs)
+
+    fix_ctx_encoder = args.fix_ctx_encoder if hasattr(args, 'fix_ctx_encoder') else False
+    biencoder = BiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
+
+    optimizer = get_optimizer(biencoder,
+                              learning_rate=args.train.learning_rate,
+                              adam_eps=args.train.adam_eps, weight_decay=args.train.weight_decay,
+                              ) if not inference_only else None
+
+    tensorizer = get_bert_tensorizer_hydra(args)
+
+    return tensorizer, biencoder, optimizer
+
+
 def get_bert_reader_components(args, inference_only: bool = False, **kwargs):
     dropout = args.dropout if hasattr(args, 'dropout') else 0.0
     encoder = HFBertEncoder.init_encoder(args.pretrained_model_cfg,
@@ -56,8 +80,8 @@ def get_bert_reader_components(args, inference_only: bool = False, **kwargs):
     reader = Reader(encoder, hidden_size)
 
     optimizer = get_optimizer(reader,
-                              learning_rate=args.learning_rate,
-                              adam_eps=args.adam_eps, weight_decay=args.weight_decay,
+                              learning_rate=args.train.learning_rate,
+                              adam_eps=args.train.adam_eps, weight_decay=args.train.weight_decay,
                               ) if not inference_only else None
 
     tensorizer = get_bert_tensorizer(args)
@@ -68,6 +92,29 @@ def get_bert_tensorizer(args, tokenizer=None):
     if not tokenizer:
         tokenizer = get_bert_tokenizer(args.pretrained_model_cfg, do_lower_case=args.do_lower_case)
     return BertTensorizer(tokenizer, args.sequence_length)
+
+
+def get_bert_tensorizer_hydra(args, tokenizer=None):
+    if not tokenizer:
+        tokenizer = get_bert_tokenizer(args.encoder.pretrained_model_cfg, do_lower_case=args.do_lower_case)
+        if args.special_tokens:
+            logger.info('Adding special tokens %s', args.special_tokens)
+            special_tokens_num = len(args.special_tokens)
+            # TODO: this is a hacky logic that uses some private tokenizer structure which can be changed in HF code
+            assert special_tokens_num < 50
+            unused_ids = [tokenizer.vocab['[unused{}]'.format(i)] for i in range(special_tokens_num)]
+            logger.info('Utilizing the following unused token ids %s', unused_ids)
+
+            for idx, id in enumerate(unused_ids):
+                del tokenizer.vocab['[unused{}]'.format(idx)]
+                tokenizer.vocab[args.special_tokens[idx]] = id
+                tokenizer.ids_to_tokens[id] = args.special_tokens[idx]
+
+            tokenizer._additional_special_tokens = list(args.special_tokens)
+
+        logger.info('Added special tokenizer.additional_special_tokens %s', tokenizer.additional_special_tokens)
+        logger.info('Tokenizer\'s all_special_tokens %s', tokenizer.all_special_tokens)
+    return BertTensorizer(tokenizer, args.encoder.sequence_length)
 
 
 def get_roberta_tensorizer(args, tokenizer=None):

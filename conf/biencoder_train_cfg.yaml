@@ -1,0 +1,62 @@
+defaults:
+  - encoder: hf_bert
+  - train: biencoder
+
+
+datasets:
+  nq_train:
+      class: dpr.data.biencoder_data.JsonQADataset
+      params:
+        data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+
+  nq_dev:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+
+  trec2020_passages_train:
+      class: dpr.data.biencoder_data.TRECDataset
+      params:
+        data_dir: /checkpoint/vladk/datasets/TREC/
+        passages_filename: collection.tsv
+        queries_filename: queries.train.tsv
+        qrels_filename: qidpidtriples.train.full.2.tsv
+
+
+train_datasets:
+dev_datasets:
+output_dir:
+train_sampling_rates:
+
+
+do_lower_case: True
+fix_ctx_encoder: False
+val_av_rank_start_epoch: 30
+seed: 12345
+checkpoint_file_name: dpr_biencoder
+model_file:
+
+
+# TODO: move to a sub conf
+local_rank: -1
+global_loss_buf_sz: 150000
+device:
+distributed_world_size:
+no_cuda: False
+n_gpu:
+fp16: False
+fp16_opt_level: O1
+
+
+special_tokens:
+  - '[Q]'
+  - '[R]'
+  - '[START_ENT]'
+  - '[END_ENT]'
+
+special_query_tokens: []
+
+
+
+
+

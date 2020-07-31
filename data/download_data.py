@@ -348,7 +348,7 @@ def unpack(gzip_file: str, out_file: str):
     output = open(out_file, 'wb')
     output.write(s)
     output.close()
-    print('Saved to ', out_file)
+    print(' Saved to ', out_file)
 
 
 def download_resource(s3_url: str, original_ext: str, compressed: bool, resource_key: str, out_dir: str) -> str:
@@ -370,7 +370,7 @@ def download_resource(s3_url: str, original_ext: str, compressed: bool, resource
 
     wget.download(s3_url, out=local_file)
 
-    print('Saved to ', local_file)
+    print(' Saved to ', local_file)
 
     if compressed:
         uncompressed_file = os.path.join(save_root, path_names[-1] + original_ext)
