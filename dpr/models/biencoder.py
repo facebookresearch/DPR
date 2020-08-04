@@ -61,7 +61,9 @@ class BiEncoder(nn.Module):
         self.fix_ctx_encoder = fix_ctx_encoder
 
     @staticmethod
-    def get_representation(sub_model: nn.Module, ids: T, segments: T, attn_mask: T, fix_encoder: bool = False) -> (
+    def get_representation(sub_model: nn.Module, ids: T, segments: T, attn_mask: T, fix_encoder: bool = False,
+                           representation_token_pos=0
+                           ) -> (
             T, T, T):
         sequence_output = None
         pooled_output = None
@@ -69,22 +71,25 @@ class BiEncoder(nn.Module):
         if ids is not None:
             if fix_encoder:
                 with torch.no_grad():
-                    sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask)
-
+                    sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask,
+                                                                              representation_token_pos=representation_token_pos)
                 if sub_model.training:
                     sequence_output.requires_grad_(requires_grad=True)
                     pooled_output.requires_grad_(requires_grad=True)
             else:
-                sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask)
+                sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask,
+                                                                          representation_token_pos=representation_token_pos)
 
         return sequence_output, pooled_output, hidden_states
 
     def forward(self, question_ids: T, question_segments: T, question_attn_mask: T, context_ids: T, ctx_segments: T,
-                ctx_attn_mask: T, encoder_type: str = 'mixed') -> Tuple[T, T]:
+                ctx_attn_mask: T, encoder_type: str = 'mixed', representation_token_pos=0) -> Tuple[T, T]:
 
         q_encoder = self.question_model if encoder_type in ['mixed', 'q_only'] else self.ctx_model
         _q_seq, q_pooled_out, _q_hidden = self.get_representation(q_encoder, question_ids, question_segments,
-                                                                  question_attn_mask, self.fix_q_encoder)
+                                                                  question_attn_mask, self.fix_q_encoder,
+                                                                  representation_token_pos=representation_token_pos
+                                                                  )
 
         ctx_encoder = self.ctx_model  # if encoder_type in ['mixed', 'ctx_only'] else self.q_model
         _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(ctx_encoder, context_ids, ctx_segments,
@@ -238,7 +243,6 @@ class BiEncoder(nn.Module):
             hard_neg_ctx_indices.append(
                 [i for i in
                  range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
-
 
             if query_token:
                 question_tensors.append(tensorizer.text_to_tensor(' '.join([query_token, question])))

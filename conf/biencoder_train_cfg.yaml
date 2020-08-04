@@ -8,11 +8,17 @@ datasets:
       class: dpr.data.biencoder_data.JsonQADataset
       params:
         data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+        selector:
+          class: dpr.data.biencoder_data.RepSpecificTokenSelector
 
   nq_dev:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
 
   trec2020_passages_train:
       class: dpr.data.biencoder_data.TRECDataset
@@ -21,6 +27,10 @@ datasets:
         passages_filename: collection.tsv
         queries_filename: queries.train.tsv
         qrels_filename: qidpidtriples.train.full.2.tsv
+        selector:
+          class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+          params:
+            static_position: 0
 
 
 train_datasets:

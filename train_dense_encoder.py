@@ -28,8 +28,7 @@ from torch import nn
 from dpr.data.biencoder_data import JsonQADataset
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, BiEncoderNllLoss, BiEncoderBatch
-from dpr.options import add_encoder_params, add_training_params, setup_args_gpu, set_seed, print_args, \
-    get_encoder_params_state, add_tokenizer_params, set_encoder_params_from_state
+from dpr.options import add_encoder_params, add_training_params, setup_args_gpu, set_seed, add_tokenizer_params
 from dpr.utils.conf_utils import BiencoderDatasetsCfg
 from dpr.utils.data_utils import ShardedDataIterator, Tensorizer, MultiSetDataIterator
 from dpr.utils.dist_utils import all_gather_list
@@ -66,7 +65,7 @@ class BiEncoderTrainer(object):
         if model_file:
             saved_state = load_states_from_checkpoint(model_file)
             # tmp
-            #set_encoder_params_from_state(saved_state.encoder_params, cfg.encoder)
+            # set_encoder_params_from_state(saved_state.encoder_params, cfg.encoder)
 
         tensorizer, model, optimizer = init_biencoder_components(cfg.encoder.encoder_model_type, cfg)
 
@@ -124,7 +123,8 @@ class BiEncoderTrainer(object):
                                                      offset=offset,
                                                      ) for ds in
                                  hydra_datasets]
-            return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle, sampling_rates=sampling_rates if is_train_set else [1])
+            return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle,
+                                        sampling_rates=sampling_rates if is_train_set else [1])
 
     def get_data_iterator(self, path, batch_size: int, shuffle=True,
                           shuffle_seed: int = 0,
@@ -229,7 +229,6 @@ class BiEncoderTrainer(object):
         log_result_step = cfg.train.log_batch_step
         batches = 0
 
-
         dataset = 0
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             # tmp:
@@ -238,9 +237,12 @@ class BiEncoderTrainer(object):
             biencoder_input = BiEncoder.create_biencoder_input2(samples_batch, self.tensorizer,
                                                                 True,
                                                                 num_hard_negatives, num_other_negatives, shuffle=False)
+            # get the token to be used for representation selection
+            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            rep_positions = ds_cfg.selector.get_positions(biencoder_input.question_ids, self.tensorizer)
 
             loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_input, self.tensorizer, cfg,
-                                                       encoder_type='mixed')
+                                                       encoder_type='mixed',rep_positions=rep_positions)
             total_loss += loss.item()
             total_correct_predictions += correct_cnt
             batches += 1
@@ -288,7 +290,7 @@ class BiEncoderTrainer(object):
         num_other_negatives = args.val_av_rank_other_neg
 
         log_result_step = cfg.train.log_batch_step
-
+        dataset=0
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             # samples += 1
             if len(q_represenations) > args.val_av_rank_max_qs / distributed_factor:
@@ -304,6 +306,11 @@ class BiEncoderTrainer(object):
             ctxs_ids = biencoder_input.context_ids
             ctxs_segments = biencoder_input.ctx_segments
             bsz = ctxs_ids.size(0)
+
+            # get the token to be used for representation selection
+            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            rep_positions = ds_cfg.selector.get_positions(biencoder_input.question_ids, self.tensorizer)
+
 
             # split contexts batch into sub batches since it is supposed to be too large to be processed in one batch
             for j, batch_start in enumerate(range(0, bsz, sub_batch_size)):
@@ -323,7 +330,7 @@ class BiEncoderTrainer(object):
                 ctx_attn_mask = self.tensorizer.get_attn_mask(ctx_ids_batch)
                 with torch.no_grad():
                     q_dense, ctx_dense = self.biencoder(q_ids, q_segments, q_attn_mask, ctx_ids_batch, ctx_seg_batch,
-                                                        ctx_attn_mask)
+                                                        ctx_attn_mask, representation_token_pos=rep_positions)
 
                 if q_dense is not None:
                     q_represenations.extend(q_dense.cpu().split(1, dim=0))
@@ -388,12 +395,13 @@ class BiEncoderTrainer(object):
 
         special_query_tokens = cfg.special_query_tokens
         special_token = None
+        dataset = 0
         for i, samples_batch in enumerate(train_data_iterator.iterate_ds_data(epoch=epoch)):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
                 if special_query_tokens:
                     special_token = special_query_tokens[dataset]
-                    #logger.info(' special_token %s', special_token)
+                    # logger.info(' special_token %s', special_token)
 
             # to be able to resume shuffled ctx- pools
             data_iteration = train_data_iterator.get_iteration()
@@ -405,8 +413,11 @@ class BiEncoderTrainer(object):
                                                                 query_token=special_token,
                                                                 )
 
+            # get the token to be used for represenation selection
+            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            rep_positions = ds_cfg.selector.get_positions(biencoder_batch.question_ids, self.tensorizer)
             loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_batch, self.tensorizer, cfg,
-                                                       encoder_type='mixed')
+                                                       encoder_type='mixed', rep_positions=rep_positions)
 
             epoch_correct_predictions += correct_cnt
             epoch_loss += loss.item()
@@ -455,10 +466,10 @@ class BiEncoderTrainer(object):
         cfg = self.cfg
         model_to_save = get_model_obj(self.biencoder)
         cp = os.path.join(cfg.output_dir,
-                          cfg.checkpoint_file_name + '.' + str(epoch))   #+ ('.' + str(offset) if offset > 0 else ''))
+                          cfg.checkpoint_file_name + '.' + str(epoch))  # + ('.' + str(offset) if offset > 0 else ''))
         # TODO
         # tmp
-        meta_params = {}  #get_encoder_params_state(args)
+        meta_params = {}  # get_encoder_params_state(args)
 
         state = CheckpointState(model_to_save.state_dict(),
                                 self.optimizer.state_dict(),
@@ -548,20 +559,21 @@ def _calc_loss(args, loss_function, local_q_vector, local_ctx_vectors, local_pos
 
 
 def _do_biencoder_fwd_pass(model: nn.Module, input: BiEncoderBatch, tensorizer: Tensorizer, args,
-                           encoder_type: str) -> Tuple[torch.Tensor, int]:
-    #logger.info('encoder_type %s', encoder_type)
+                           encoder_type: str, rep_positions=0) -> Tuple[torch.Tensor, int]:
+    # logger.info('encoder_type %s', encoder_type)
     input = BiEncoderBatch(**move_to_device(input._asdict(), args.device))
 
     q_attn_mask = tensorizer.get_attn_mask(input.question_ids)
     ctx_attn_mask = tensorizer.get_attn_mask(input.context_ids)
-
     if model.training:
         model_out = model(input.question_ids, input.question_segments, q_attn_mask, input.context_ids,
-                          input.ctx_segments, ctx_attn_mask, encoder_type=encoder_type)
+                          input.ctx_segments, ctx_attn_mask, encoder_type=encoder_type,
+                          representation_token_pos=rep_positions)
     else:
         with torch.no_grad():
             model_out = model(input.question_ids, input.question_segments, q_attn_mask, input.context_ids,
-                              input.ctx_segments, ctx_attn_mask, encoder_type=encoder_type)
+                              input.ctx_segments, ctx_attn_mask, encoder_type,
+                              representation_token_pos=rep_positions)
 
     local_q_vector, local_ctx_vectors = model_out
 
@@ -581,12 +593,6 @@ def _do_biencoder_fwd_pass(model: nn.Module, input: BiEncoderBatch, tensorizer: 
 
 @hydra.main(config_path="conf/biencoder_train_cfg.yaml")
 def main(cfg: DictConfig):
-    # TODO: find a way to avoid this customization
-    #if cfg.train_datasets and not isinstance(cfg.train_datasets, list):
-    #    cfg.train_datasets = cfg.train_datasets.split('|')
-    #if cfg.dev_datasets and not isinstance(cfg.dev_datasets, list):
-    #    cfg.dev_datasets = cfg.dev_datasets.split('|')
-
     parser = argparse.ArgumentParser()
 
     add_encoder_params(parser)

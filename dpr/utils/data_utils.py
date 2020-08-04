@@ -282,3 +282,6 @@ class Tensorizer(object):
 
     def set_pad_to_max(self, pad: bool):
         raise NotImplementedError
+
+    def get_token_id(self, token: str) -> int:
+        raise NotImplementedError

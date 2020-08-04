@@ -13,7 +13,6 @@ import logging
 from typing import Tuple
 
 import torch
-import transformers
 from torch import Tensor as T
 from torch import nn
 from transformers.modeling_bert import BertConfig, BertModel
@@ -161,7 +160,7 @@ class HFBertEncoder(BertModel):
             cfg.hidden_dropout_prob = dropout
         return cls.from_pretrained(cfg_name, config=cfg, project_dim=projection_dim, **kwargs)
 
-    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T) -> Tuple[T, ...]:
+    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T, representation_token_pos=0) -> Tuple[T, ...]:
         if self.config.output_hidden_states:
             sequence_output, pooled_output, hidden_states = super().forward(input_ids=input_ids,
                                                                             token_type_ids=token_type_ids,
@@ -171,7 +170,13 @@ class HFBertEncoder(BertModel):
             sequence_output, pooled_output = super().forward(input_ids=input_ids, token_type_ids=token_type_ids,
                                                              attention_mask=attention_mask)
 
-        pooled_output = sequence_output[:, 0, :]
+        if isinstance(representation_token_pos, int):
+            pooled_output = sequence_output[:, representation_token_pos, :]
+        else:  # treat as a tensor
+            bsz = sequence_output.size(0)
+            assert representation_token_pos.size(0) == bsz
+            pooled_output = torch.stack([sequence_output[i, representation_token_pos[i, 1], :] for i in range(bsz)])
+
         if self.encode_proj:
             pooled_output = self.encode_proj(pooled_output)
         return sequence_output, pooled_output, hidden_states
@@ -227,6 +232,9 @@ class BertTensorizer(Tensorizer):
 
     def set_pad_to_max(self, do_pad: bool):
         self.pad_to_max = do_pad
+
+    def get_token_id(self, token: str) -> int:
+        return self.tokenizer.vocab[token]
 
 
 class RobertaTensorizer(BertTensorizer):

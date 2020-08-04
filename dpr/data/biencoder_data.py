@@ -6,8 +6,13 @@ import os
 from typing import Dict, List, Tuple
 
 import torch
+from torch import Tensor as T
 
-from dpr.utils.data_utils import read_data_from_json_files
+from dpr.utils.data_utils import read_data_from_json_files, Tensorizer
+
+import hydra
+from omegaconf import DictConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +26,43 @@ class BiEncoderSample(object):
     hard_negative_passages: List[BiEncoderPassage]
 
 
-class JsonQADataset(torch.utils.data.Dataset):
-    def __init__(self, data_file_pattern: str):
+class RepTokenSelector(object):
+    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
+        raise NotImplementedError
+
+
+class RepStaticPosTokenSelector(RepTokenSelector):
+    def __init__(self, static_position: int = 0):
+        self.static_position = static_position
+
+    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
+        return self.static_position
+
+
+class RepSpecificTokenSelector(RepTokenSelector):
+    def __init__(self, token: str = '[CLS]'):
+        self.token = token
+        self.token_id = None
+
+    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
+        if not self.token_id:
+            self.token_id = tenzorizer.get_token_id(self.token)
+        token_indexes = (input_ids == self.token_id).nonzero()
+        return token_indexes
+
+
+class Dataset(torch.utils.data.Dataset):
+    def __init__(self, selector: DictConfig):
+        # TODO: move to conf_utils
+        self.selector = hydra.utils.instantiate(selector)
+
+
+class JsonQADataset(Dataset):
+    def __init__(self, data_file_pattern: str, selector: DictConfig):
+        super().__init__(selector)
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
+
 
     def load_data(self):
         data = read_data_from_json_files(self.data_files)
@@ -47,8 +85,11 @@ class JsonQADataset(torch.utils.data.Dataset):
         return len(self.data)
 
 
-class TRECDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir: str, passages_filename: str, queries_filename: str, qrels_filename: str):
+class TRECDataset(Dataset):
+    def __init__(self, data_dir: str, passages_filename: str, queries_filename: str, qrels_filename: str,
+                 selector: DictConfig):
+        super().__init__(selector)
+
         self.passages_file = os.path.join(data_dir, passages_filename)
         self.queries_file = os.path.join(data_dir, queries_filename)
         self.qidpidtriples_file = os.path.join(data_dir, qrels_filename)
@@ -127,8 +168,8 @@ def _load_qrels(qrels_file: str, max_passages_per_q: int = 30) -> List[Tuple[int
                 result[qid] = q_info
 
             # tmp:
-            #if len(result)>100:
-            #    break
+            if len(result)>100:
+                break
 
     # convert to list
     return [(k, v[0], v[1]) for k, v in result.items()]
