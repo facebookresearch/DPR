@@ -10,6 +10,8 @@ datasets:
         data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
         selector:
           class: dpr.data.biencoder_data.RepSpecificTokenSelector
+          params:
+            token: '[CLS]'
 
   nq_dev:
     class: dpr.data.biencoder_data.JsonQADataset
