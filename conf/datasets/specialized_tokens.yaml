@@ -1,0 +1,66 @@
+datasets:
+  nq_train:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[Q]'
+
+  nq_train_kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/nq-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[Q]'
+
+  nq_dev:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[Q]'
+
+  trec2020_passages_train:
+    class: dpr.data.biencoder_data.TRECDataset
+    params:
+      data_dir: /checkpoint/vladk/datasets/TREC/
+      passages_filename: collection.tsv
+      queries_filename: queries.train.tsv
+      qrels_filename: qidpidtriples.train.full.2.tsv
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[R]'
+
+  aidayago2_train:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/aidayago2-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[START_ENT]'
+
+  fever_train:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/fever-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[F]'
+
+  trivia_train_kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/triviaqa-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        params:
+          token: '[Q]'
