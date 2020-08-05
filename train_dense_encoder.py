@@ -401,7 +401,7 @@ class BiEncoderTrainer(object):
                 samples_batch, dataset = samples_batch
                 if special_query_tokens:
                     special_token = special_query_tokens[dataset]
-                    # logger.info(' special_token %s', special_token)
+                    #logger.info(' special_token %s', special_token)
 
             # to be able to resume shuffled ctx- pools
             data_iteration = train_data_iterator.get_iteration()
@@ -413,9 +413,10 @@ class BiEncoderTrainer(object):
                                                                 query_token=special_token,
                                                                 )
 
-            # get the token to be used for represenation selection
+            # get the token to be used for representation selection
             ds_cfg = self.ds_cfg.train_datasets[dataset]
             rep_positions = ds_cfg.selector.get_positions(biencoder_batch.question_ids, self.tensorizer)
+
             loss, correct_cnt = _do_biencoder_fwd_pass(self.biencoder, biencoder_batch, self.tensorizer, cfg,
                                                        encoder_type='mixed', rep_positions=rep_positions)
 

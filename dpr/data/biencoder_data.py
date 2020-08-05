@@ -5,14 +5,12 @@ import logging
 import os
 from typing import Dict, List, Tuple
 
+import hydra
 import torch
+from omegaconf import DictConfig
 from torch import Tensor as T
 
 from dpr.utils.data_utils import read_data_from_json_files, Tensorizer
-
-import hydra
-from omegaconf import DictConfig
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +46,24 @@ class RepSpecificTokenSelector(RepTokenSelector):
         if not self.token_id:
             self.token_id = tenzorizer.get_token_id(self.token)
         token_indexes = (input_ids == self.token_id).nonzero()
-        return token_indexes
+        # check if all samples in input_ids has index presence and out a default value otherwise
+        bsz = input_ids.size(0)
+        if bsz == token_indexes.size(0):
+            return token_indexes
+
+        token_indexes_result = []
+        found_idx_cnt = 0
+        for i in range(bsz):
+            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:  # this samples has the special token
+                token_indexes_result.append(token_indexes[found_idx_cnt])
+                found_idx_cnt += 1
+            else:
+                logger.warning('missing special token %s', input_ids[i])
+
+                token_indexes_result.append(
+                    torch.tensor([i, 0]))  # setting 0-th token, i.e. CLS for BERT as the special one
+        token_indexes_result = torch.stack(token_indexes_result, dim=0)
+        return token_indexes_result
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -62,7 +77,6 @@ class JsonQADataset(Dataset):
         super().__init__(selector)
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
-
 
     def load_data(self):
         data = read_data_from_json_files(self.data_files)
@@ -168,7 +182,7 @@ def _load_qrels(qrels_file: str, max_passages_per_q: int = 30) -> List[Tuple[int
                 result[qid] = q_info
 
             # tmp:
-            #if len(result)>100:
+            # if len(result)>100:
             #    break
 
     # convert to list

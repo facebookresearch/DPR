@@ -174,7 +174,8 @@ class HFBertEncoder(BertModel):
             pooled_output = sequence_output[:, representation_token_pos, :]
         else:  # treat as a tensor
             bsz = sequence_output.size(0)
-            assert representation_token_pos.size(0) == bsz
+            assert representation_token_pos.size(0) == bsz, \
+                'query bsz={} while representation_token_pos bsz={}'.format(bsz, representation_token_pos.size(0))
             pooled_output = torch.stack([sequence_output[i, representation_token_pos[i, 1], :] for i in range(bsz)])
 
         if self.encode_proj:
@@ -193,23 +194,25 @@ class BertTensorizer(Tensorizer):
         self.max_length = max_length
         self.pad_to_max = pad_to_max
 
-    def text_to_tensor(self, text: str, title: str = None, add_special_tokens: bool = True):
+    def text_to_tensor(self, text: str, title: str = None, add_special_tokens: bool = True, apply_max_len: bool =True):
         text = text.strip()
-
         # tokenizer automatic padding is explicitly disabled since its inconsistent behavior
+        #TODO: move max len to methods params?
+
         if title:
             token_ids = self.tokenizer.encode(title, text_pair=text, add_special_tokens=add_special_tokens,
-                                              max_length=self.max_length,
+                                              max_length=self.max_length if apply_max_len else 10000,
                                               pad_to_max_length=False)
         else:
-            token_ids = self.tokenizer.encode(text, add_special_tokens=add_special_tokens, max_length=self.max_length,
+            token_ids = self.tokenizer.encode(text, add_special_tokens=add_special_tokens,
+                                              max_length=self.max_length if apply_max_len else 10000,
                                               pad_to_max_length=False)
 
         seq_len = self.max_length
         if self.pad_to_max and len(token_ids) < seq_len:
             token_ids = token_ids + [self.tokenizer.pad_token_id] * (seq_len - len(token_ids))
-        if len(token_ids) > seq_len:
-            token_ids = token_ids[0:seq_len]
+        if len(token_ids) >= seq_len:
+            token_ids = token_ids[0:seq_len] if apply_max_len else token_ids
             token_ids[-1] = self.tokenizer.sep_token_id
 
         return torch.tensor(token_ids)
@@ -228,7 +231,7 @@ class BertTensorizer(Tensorizer):
         return token.startswith("##") or token.startswith(" ##")
 
     def to_string(self, token_ids, skip_special_tokens=True):
-        return self.tokenizer.decode(token_ids, skip_special_tokens=True)
+        return self.tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
 
     def set_pad_to_max(self, do_pad: bool):
         self.pad_to_max = do_pad
