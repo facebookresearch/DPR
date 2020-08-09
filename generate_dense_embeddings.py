@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--ctx_file', type=str, default=None, help='Path to passages set .tsv file')
     parser.add_argument('--out_file', required=True, type=str, default=None,
-                        help='output .tsv file path to write results to ')
+                        help='output file path to write results to')
     parser.add_argument('--shard_id', type=int, default=0, help="Number(0-based) of data shard to process")
     parser.add_argument('--num_shards', type=int, default=1, help="Total amount of data shards")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size for the passage encoder forward pass")

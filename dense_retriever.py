@@ -282,7 +282,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoded_ctx_file', type=str, default=None,
                         help='Glob path to encoded passages (from generate_dense_embeddings tool)')
     parser.add_argument('--out_file', type=str, default=None,
-                        help='output .tsv file path to write results to ')
+                        help='output .json file path to write results to ')
     parser.add_argument('--match', type=str, default='string', choices=['regex', 'string'],
                         help="Answer matching logic type")
     parser.add_argument('--n-docs', type=int, default=200, help="Amount of top docs to return")
