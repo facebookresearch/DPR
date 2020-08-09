@@ -236,7 +236,7 @@ def main(args):
 
     index_path = "_".join(input_paths[0].split("_")[:-1])
     if args.save_or_load_index and os.path.exists(index_path):
-        retriever.index.deserialize(index_path)
+        retriever.index.deserialize_from(index_path)
     else:
         logger.info('Reading all passages data from files: %s', input_paths)
         retriever.index_encoded_data(input_paths, buffer_size=index_buffer_sz)
