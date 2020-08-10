@@ -222,10 +222,10 @@ def main(args):
 
     index_buffer_sz = args.index_buffer
     if args.hnsw_index:
-        index = DenseHNSWFlatIndexer(vector_size)
         index_buffer_sz = -1  # encode all at once
+        index = DenseHNSWFlatIndexer(vector_size, index_buffer_sz)
     else:
-        index = DenseFlatIndexer(vector_size)
+        index = DenseFlatIndexer(vector_size, index_buffer_sz)
 
     retriever = DenseRetriever(encoder, args.batch_size, tensorizer, index)
 
