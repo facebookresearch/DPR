@@ -94,9 +94,6 @@ class DenseFlatIndexer(DenseIndexer):
         super(DenseFlatIndexer, self).__init__(buffer_size=buffer_size)
         self.index = faiss.IndexFlatIP(vector_sz)
 
-    def index_data(self, vector_files: List[str]):
-        super(DenseFlatIndexer, self).index_data(vector_files)
-
     def _index_batch(self, data: List[Tuple[object, np.array]]):
         db_ids = [t[0] for t in data]
         vectors = [np.reshape(t[1], (1, -1)) for t in data]
