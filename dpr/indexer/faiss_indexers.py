@@ -150,7 +150,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         if self.phi is None:
             raise RuntimeError('Max norm needs to be calculated from all data at once,'
                                'results will be unpredictable otherwise.'
-                               'run `set_phi()` before calling this method.')
+                               'Run `_set_phi()` before calling this method.')
 
         db_ids = [t[0] for t in data]
         vectors = [np.reshape(t[1], (1, -1)) for t in data]
