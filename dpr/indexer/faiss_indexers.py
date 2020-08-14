@@ -178,7 +178,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
     def deserialize_from(self, file: str):
         super(DenseHNSWFlatIndexer, self).deserialize_from(file)
         # to trigger warning on subsequent indexing
-        self.phi = 1
+        self.phi = None
 
 
 def iterate_encoded_files(vector_files: list) -> Iterator[Tuple[object, np.array]]:
