@@ -148,10 +148,10 @@ class BertTensorizer(Tensorizer):
         if title:
             token_ids = self.tokenizer.encode(title, text_pair=text, add_special_tokens=add_special_tokens,
                                               max_length=self.max_length,
-                                              pad_to_max_length=False)
+                                              pad_to_max_length=False, truncation=True)
         else:
             token_ids = self.tokenizer.encode(text, add_special_tokens=add_special_tokens, max_length=self.max_length,
-                                              pad_to_max_length=False)
+                                              pad_to_max_length=False, truncation=True)
 
         seq_len = self.max_length
         if self.pad_to_max and len(token_ids) < seq_len:
