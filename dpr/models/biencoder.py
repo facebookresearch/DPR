@@ -165,10 +165,10 @@ class BiEncoder(nn.Module):
 class BiEncoderNllLoss(object):
 
     def calc(self, q_vectors: T, ctx_vectors: T, positive_idx_per_question: list,
-             hard_negatice_idx_per_question: list = None) -> Tuple[T, int]:
+             hard_negative_idx_per_question: list = None) -> Tuple[T, int]:
         """
         Computes nll loss for the given lists of question and ctx vectors.
-        Note that although hard_negatice_idx_per_question in not currently in use, one can use it for the
+        Note that although hard_negative_idx_per_question in not currently in use, one can use it for the
         loss modifications. For example - weighted NLL with different factors for hard vs regular negatives.
         :return: a tuple of loss value and amount of correct predictions per batch
         """
