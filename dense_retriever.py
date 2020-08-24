@@ -81,23 +81,6 @@ class DenseRetriever(object):
         assert query_tensor.size(0) == len(questions)
         return query_tensor
 
-    def index_encoded_data(self, vector_files: List[str], buffer_size: int = 50000):
-        """
-        Indexes encoded passages takes form a list of files
-        :param vector_files: file names to get passages vectors from
-        :param buffer_size: size of a buffer (amount of passages) to send for the indexing at once
-        :return:
-        """
-        buffer = []
-        for i, item in enumerate(iterate_encoded_files(vector_files)):
-            db_id, doc_vector = item
-            buffer.append((db_id, doc_vector))
-            if 0 < buffer_size == len(buffer):
-                self.index.index_data(buffer)
-                buffer = []
-        self.index.index_data(buffer)
-        logger.info('Data indexing completed.')
-
     def get_top_docs(self, query_vectors: np.array, top_docs: int = 100) -> List[Tuple[List[object], List[float]]]:
         """
         Does the retrieval of the best matching passages given the query vectors batch
@@ -220,12 +203,10 @@ def main(args):
     vector_size = model_to_load.get_out_size()
     logger.info('Encoder vector_size=%d', vector_size)
 
-    index_buffer_sz = args.index_buffer
     if args.hnsw_index:
-        index = DenseHNSWFlatIndexer(vector_size)
-        index_buffer_sz = -1  # encode all at once
+        index = DenseHNSWFlatIndexer(vector_size, args.index_buffer)
     else:
-        index = DenseFlatIndexer(vector_size)
+        index = DenseFlatIndexer(vector_size, args.index_buffer)
 
     retriever = DenseRetriever(encoder, args.batch_size, tensorizer, index)
 
@@ -235,11 +216,11 @@ def main(args):
     input_paths = glob.glob(ctx_files_pattern)
 
     index_path = "_".join(input_paths[0].split("_")[:-1])
-    if args.save_or_load_index and os.path.exists(index_path):
-        retriever.index.deserialize(index_path)
+    if args.save_or_load_index and (os.path.exists(index_path) or os.path.exists(index_path + ".index.dpr")):
+        retriever.index.deserialize_from(index_path)
     else:
         logger.info('Reading all passages data from files: %s', input_paths)
-        retriever.index_encoded_data(input_paths, buffer_size=index_buffer_sz)
+        retriever.index.index_data(input_paths)
         if args.save_or_load_index:
             retriever.index.serialize(index_path)
     # get questions & answers
@@ -282,7 +263,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoded_ctx_file', type=str, default=None,
                         help='Glob path to encoded passages (from generate_dense_embeddings tool)')
     parser.add_argument('--out_file', type=str, default=None,
-                        help='output .tsv file path to write results to ')
+                        help='output .json file path to write results to ')
     parser.add_argument('--match', type=str, default='string', choices=['regex', 'string'],
                         help="Answer matching logic type")
     parser.add_argument('--n-docs', type=int, default=200, help="Amount of top docs to return")
