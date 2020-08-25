@@ -2,10 +2,13 @@ import collections
 import csv
 import glob
 import logging
+import numpy as np
 import os
+import random
 from typing import Dict, List, Tuple
 
 import hydra
+import jsonlines
 import torch
 from omegaconf import DictConfig
 from torch import Tensor as T
@@ -54,7 +57,8 @@ class RepSpecificTokenSelector(RepTokenSelector):
         token_indexes_result = []
         found_idx_cnt = 0
         for i in range(bsz):
-            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:  # this samples has the special token
+            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][
+                0] == i:  # this samples has the special token
                 token_indexes_result.append(token_indexes[found_idx_cnt])
                 found_idx_cnt += 1
             else:
@@ -70,6 +74,9 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, selector: DictConfig):
         # TODO: move to conf_utils
         self.selector = hydra.utils.instantiate(selector)
+
+    def __getitem__(self, index) -> BiEncoderSample:
+        raise NotImplementedError
 
 
 class JsonQADataset(Dataset):
@@ -97,6 +104,126 @@ class JsonQADataset(Dataset):
 
     def __len__(self):
         return len(self.data)
+
+
+class JsonLTablesQADataset(Dataset):
+    def __init__(self, data_file_pattern: str, selector: DictConfig, is_train_set: bool,
+                 shuffle_positives: bool = False,
+                 max_negatives: int = 1, seed: int = 0, max_len=200
+                 ):
+        super().__init__(selector)
+        self.data_files = glob.glob(data_file_pattern)
+        self.data = []
+        self.shuffle_positives = shuffle_positives
+        self.is_train_set = is_train_set
+        self.max_negatives = max_negatives
+        self.rnd = random.Random(seed)
+        self.max_len = max_len
+
+    def load_data(self):
+        data = []
+        for path in self.data_files:
+            with jsonlines.open(path, mode='r') as jsonl_reader:
+                data += [jline for jline in jsonl_reader]
+
+        # filter those without positive ctx
+        self.data = [r for r in data if len(r['positive_ctxs']) > 0]
+        logger.info('Total cleaned data size: {}'.format(len(self.data)))
+
+    def __getitem__(self, index) -> BiEncoderSample:
+
+        #logger.info('!!! get table item')
+        json_sample = self.data[index]
+        r = BiEncoderSample()
+        r.query = json_sample['question']
+        positive_ctxs = json_sample['positive_ctxs']
+        hard_negative_ctxs = json_sample['hard_negative_ctxs']
+
+        if self.shuffle_positives:
+            self.rnd.shuffle(positive_ctxs)
+
+        if self.is_train_set:
+            self.rnd.shuffle(hard_negative_ctxs)
+
+        #logger.info('!!! positive_ctxs %s', len(positive_ctxs))
+
+        positive_ctxs = positive_ctxs[0:1]
+        hard_negative_ctxs = hard_negative_ctxs[0:self.max_negatives]
+
+        #logger.info('!!! hard_negative_ctxs %s', len(hard_negative_ctxs))
+
+        r.positive_passages = [BiEncoderPassage(self._linearize_table(ctx, True), ctx['caption']) for ctx in
+                               positive_ctxs]
+        r.negative_passages = []
+        r.hard_negative_passages = [BiEncoderPassage(self._linearize_table(ctx, False), ctx['caption']) for ctx in
+                                    hard_negative_ctxs]
+        return r
+
+    def __len__(self):
+        return len(self.data)
+
+    def _linearize_table(self, t: dict, is_positive: bool) -> List[str]:
+        rows = t['rows']
+        selected_rows = set()
+        rows_linearized = []
+        total_words_len = 0
+
+        # get the first non empty row as the "header"
+        for i, r in enumerate(rows):
+            row_lin, row_len = self._linearize_row(r)
+            if len(row_lin) > 1:  # TODO: change to checking cell value tokens
+                selected_rows.add(i)
+                rows_linearized.append(row_lin)
+                total_words_len += row_len
+                break
+
+        # split to chunks
+        if is_positive:
+            row_idx_with_answers = [ap[0] for ap in t['answer_pos']]
+            #logger.info('!!! row_idx_with_answers %s', row_idx_with_answers)
+
+            if self.shuffle_positives:
+                self.rnd.shuffle(row_idx_with_answers)
+            for i in row_idx_with_answers:
+                if i not in selected_rows:
+                    row_lin, row_len = self._linearize_row(rows[i])
+                    selected_rows.add(i)
+                    rows_linearized.append(row_lin)
+                    total_words_len += row_len
+                if total_words_len >= self.max_len:
+                    break
+
+        if total_words_len < self.max_len:  # append random rows
+
+            if self.is_train_set:
+                rows_indexes = np.random.permutation(range(len(rows)))
+            else:
+                rows_indexes = [*range(len(rows))]
+
+            for i in rows_indexes:
+                if i not in selected_rows:
+                    row_lin, row_len = self._linearize_row(rows[i])
+                    if len(row_lin) > 1:  # TODO: change to checking cell value tokens
+                        selected_rows.add(i)
+                        rows_linearized.append(row_lin)
+                        total_words_len += row_len
+                    if total_words_len >= self.max_len:
+                        break
+
+        linearized_str = ''
+        for r in rows_linearized:
+            linearized_str += (r + '\n')
+
+        #logger.info('!!! selected_rows %s', selected_rows)
+        #logger.info('!!! total_words_len %s', total_words_len)
+        #logger.info('!!! positive linearized_str %s', linearized_str)
+
+        return linearized_str
+
+    def _linearize_row(self, row: dict) -> Tuple[str, int]:
+        cell_values = [c['value'] for c in row['columns']]
+        total_words = sum(len(c.split(' ')) for c in cell_values)
+        return ', '.join([c['value'] for c in row['columns']]), total_words
 
 
 class TRECDataset(Dataset):

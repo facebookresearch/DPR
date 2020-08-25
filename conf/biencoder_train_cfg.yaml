@@ -16,6 +16,8 @@ seed: 12345
 checkpoint_file_name: dpr_biencoder
 model_file:
 
+shuffle_positive_ctx: False
+
 
 # TODO: move to a sub conf
 local_rank: -1

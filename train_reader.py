@@ -78,6 +78,9 @@ class ReaderTrainer(object):
     def get_data_iterator(self, path: str, batch_size: int, is_train: bool, shuffle=True,
                           shuffle_seed: int = 0,
                           offset: int = 0) -> ShardedDataIterator:
+        # tmp:
+        # TODO: support list
+        path = path[0]
         data_files = glob.glob(path)
         logger.info("Data files: %s", data_files)
         if not data_files:
@@ -91,12 +94,15 @@ class ReaderTrainer(object):
 
         # apply deserialization hook
         iterator.apply(lambda sample: sample.on_deserialize())
+
+        # iterate_data
+
         return iterator
 
     def run_train(self):
         args = self.args
 
-        train_iterator = self.get_data_iterator(args.train_file, args.batch_size,
+        train_iterator = self.get_data_iterator(args.train_files, args.batch_size,
                                                 True,
                                                 shuffle=True,
                                                 shuffle_seed=args.seed, offset=self.start_batch)
@@ -149,7 +155,7 @@ class ReaderTrainer(object):
         logger.info('Validation ...')
         args = self.args
         self.reader.eval()
-        data_iterator = self.get_data_iterator(args.dev_file, args.dev_batch_size, False, shuffle=False)
+        data_iterator = self.get_data_iterator(args.dev_files, args.dev_batch_size, False, shuffle=False)
 
         log_result_step = args.log_batch_step
         all_results = []
@@ -494,9 +500,9 @@ def main():
 
     trainer = ReaderTrainer(args)
 
-    if args.train_file is not None:
+    if args.train_files is not None:
         trainer.run_train()
-    elif args.dev_file:
+    elif args.dev_files:
         logger.info("No train files are specified. Run validation.")
         trainer.validate()
     else:

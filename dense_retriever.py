@@ -20,6 +20,7 @@ import pickle
 import time
 from typing import List, Tuple, Dict, Iterator
 
+import jsonlines
 import numpy as np
 import torch
 from torch import Tensor as T
@@ -132,9 +133,16 @@ def validate(passages: Dict[object, Tuple[str, str]], answers: List[List[str]],
     return match_stats.questions_doc_hits
 
 
-def load_passages(ctx_file: str) -> Dict[object, Tuple[str, str]]:
+def load_passages(ctx_file: str, args) -> Dict[object, Tuple[str, str]]:
     docs = {}
     logger.info('Reading data from: %s', ctx_file)
+
+    if args.new_chunks:
+        with open(args.ctx_file, "rt", newline="") as fin:
+            reader = csv.DictReader(fin, delimiter="\t")
+            for row in reader:
+                docs[row['id']] = (row['text'], row['wikipedia_title'])
+
     if ctx_file.startswith(".gz"):
         with gzip.open(ctx_file) as tsvfile:
             reader = csv.reader(tsvfile, delimiter='\t', )
@@ -194,6 +202,41 @@ def iterate_encoded_files(vector_files: list) -> Iterator[Tuple[object, np.array
             for doc in doc_vectors:
                 db_id, doc_vector = doc
                 yield db_id, doc_vector
+
+
+
+def convert_to_kilt(args, dpr_output):
+
+    with open(dpr_output, "rt") as fin:
+        dpr_output = json.load(fin)
+
+    kilt_gold = []
+
+    with jsonlines.open(args.kilt_gold, "r") as reader:
+        kilt_gold = list(reader)
+    assert len(kilt_gold) == len(dpr_output)
+
+
+    chunk_id_to_wikipedia_id = []
+    with open(args.ctx_file, "rt", newline="") as fin:
+        reader = csv.DictReader(fin, delimiter="\t")
+        for i, row in enumerate(reader):
+            assert i == int(row["id"])
+            chunk_id_to_wikipedia_id.append(int(row["wikipedia_id"]))
+
+    with jsonlines.open(args.kilt_out_file, mode='w') as writer:
+        for dpr_entry, kilt_gold_entry in zip(dpr_output, kilt_gold):
+            assert dpr_entry["question"] == kilt_gold_entry["input"]
+            provenance = []
+            for ctx in dpr_entry["ctxs"]:
+                provenance.append({"wikipedia_id": str(chunk_id_to_wikipedia_id[int(ctx["id"])])})
+            kilt_entry = {
+                "id": kilt_gold_entry["id"],
+                "input": dpr_entry["question"],
+                "output": [{"provenance": provenance}],
+            }
+            writer.write(kilt_entry)
+            #print(json.dumps(kilt_entry, ensure_ascii=False))
 
 
 def main(args):
@@ -256,7 +299,7 @@ def main(args):
     # get top k results
     top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), args.n_docs)
 
-    all_passages = load_passages(args.ctx_file)
+    all_passages = load_passages(args.ctx_file, args)
 
     if len(all_passages) == 0:
         raise RuntimeError('No passages data found. Please specify ctx_file param properly.')
@@ -267,6 +310,8 @@ def main(args):
     if args.out_file:
         save_results(all_passages, questions, question_answers, top_ids_and_scores, questions_doc_hits, args.out_file)
 
+    if args.kilt_out_file:
+        convert_to_kilt(args, args.out_file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -293,6 +338,11 @@ if __name__ == '__main__':
                         help="Temporal memory data buffer size (in samples) for indexer")
     parser.add_argument("--hnsw_index", action='store_true', help='If enabled, use inference time efficient HNSW index')
     parser.add_argument("--save_or_load_index", action='store_true', help='If enabled, save index')
+    parser.add_argument('--new_chunks', action='store_true')
+    parser.add_argument('--kilt_out_file', type=str, default=None,
+                        help='output .tsv file path to write KILT formatted results to')
+    parser.add_argument('--kilt_gold', type=str, default=None,
+                        help='output .tsv file path to write KILT formatted results to')
 
     args = parser.parse_args()
 

@@ -9,12 +9,11 @@
  Command line tool that produces embeddings for a large documents base based on the pretrained ctx & question encoders
  Supposed to be used in a 'sharded' way to speed up the process.
 """
-import os
-import pathlib
-
 import argparse
 import csv
 import logging
+import os
+import pathlib
 import pickle
 from typing import List, Tuple
 
@@ -26,7 +25,7 @@ from dpr.models import init_biencoder_components
 from dpr.options import add_encoder_params, setup_args_gpu, print_args, set_encoder_params_from_state, \
     add_tokenizer_params, add_cuda_params
 from dpr.utils.data_utils import Tensorizer
-from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint,move_to_device
+from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint, move_to_device
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -98,10 +97,17 @@ def main(args):
     logger.info('reading data from file=%s', args.ctx_file)
 
     rows = []
-    with open(args.ctx_file) as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t')
-        # file format: doc_id, doc_text, title
-        rows.extend([(row[0], row[1], row[2]) for row in reader if row[0] != 'id'])
+
+    if args.new_chunks:
+        with open(args.ctx_file, "rt", newline="") as fin:
+            reader = csv.DictReader(fin, delimiter="\t")
+            # file format: doc_id, doc_text, title
+            rows.extend([(row['id'], row['text'], row['wikipedia_title']) for row in reader])
+    else:
+        with open(args.ctx_file) as tsvfile:
+            reader = csv.reader(tsvfile, delimiter='\t')
+            # file format: doc_id, doc_text, title
+            rows.extend([(row[0], row[1], row[2]) for row in reader if row[0] != 'id'])
 
     shard_size = int(len(rows) / args.num_shards)
     start_idx = args.shard_id * shard_size
@@ -134,6 +140,9 @@ if __name__ == '__main__':
     parser.add_argument('--shard_id', type=int, default=0, help="Number(0-based) of data shard to process")
     parser.add_argument('--num_shards', type=int, default=1, help="Total amount of data shards")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size for the passage encoder forward pass")
+    parser.add_argument('--new_chunks', action='store_true')
+
+
     args = parser.parse_args()
 
     assert args.model_file, 'Please specify --model_file checkpoint to init model weights'

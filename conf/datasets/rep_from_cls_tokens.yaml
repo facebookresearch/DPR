@@ -11,7 +11,7 @@ datasets:
   nq_train_kilt:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
-      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/nq-train-multikilt.json
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
@@ -21,6 +21,15 @@ datasets:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+
+  nq_dev_kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
@@ -41,7 +50,7 @@ datasets:
   aidayago2_train:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
-      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/aidayago2-train-multikilt.json
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepSpecificTokenSelector
         params:
@@ -50,7 +59,7 @@ datasets:
   fever_train:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
-      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/fever-train-multikilt.json
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
@@ -59,8 +68,32 @@ datasets:
   trivia_train_kilt:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
-      data_file_pattern: /private/home/jeanm/retrieval/KIB/dpr/triviaqa-train-multikilt.json
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
           static_position: 0
+
+
+  # NQ Tables
+  nq_train_tables_short_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.tables.whole.bm25.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: True
+      shuffle_positives: True
+
+  nq_test_tables_short_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: False
+      shuffle_positives: False
