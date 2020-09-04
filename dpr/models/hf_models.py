@@ -86,10 +86,11 @@ def get_bert_reader_components(args, inference_only: bool = False, **kwargs):
     tensorizer = get_bert_tensorizer(args)
     return tensorizer, reader, optimizer
 
-
-def get_bert_tensorizer(args, tokenizer=None):
+def get_bert_tensorizer(args, tokenizer=None, special_tokens = None):
     if not tokenizer:
         tokenizer = get_bert_tokenizer(args.pretrained_model_cfg, do_lower_case=args.do_lower_case)
+        if args.special_tokens:
+            _add_special_tokens(tokenizer, args.special_tokens)
     return BertTensorizer(tokenizer, args.sequence_length)
 
 
@@ -97,23 +98,26 @@ def get_bert_tensorizer_hydra(args, tokenizer=None):
     if not tokenizer:
         tokenizer = get_bert_tokenizer(args.encoder.pretrained_model_cfg, do_lower_case=args.do_lower_case)
         if args.special_tokens:
-            logger.info('Adding special tokens %s', args.special_tokens)
-            special_tokens_num = len(args.special_tokens)
-            # TODO: this is a hacky logic that uses some private tokenizer structure which can be changed in HF code
-            assert special_tokens_num < 50
-            unused_ids = [tokenizer.vocab['[unused{}]'.format(i)] for i in range(special_tokens_num)]
-            logger.info('Utilizing the following unused token ids %s', unused_ids)
-
-            for idx, id in enumerate(unused_ids):
-                del tokenizer.vocab['[unused{}]'.format(idx)]
-                tokenizer.vocab[args.special_tokens[idx]] = id
-                tokenizer.ids_to_tokens[id] = args.special_tokens[idx]
-
-            tokenizer._additional_special_tokens = list(args.special_tokens)
-
-        logger.info('Added special tokenizer.additional_special_tokens %s', tokenizer.additional_special_tokens)
-        logger.info('Tokenizer\'s all_special_tokens %s', tokenizer.all_special_tokens)
+            _add_special_tokens(tokenizer, args.special_tokens)
     return BertTensorizer(tokenizer, args.encoder.sequence_length)
+
+
+def _add_special_tokens(tokenizer, special_tokens):
+    logger.info('Adding special tokens %s', special_tokens)
+    special_tokens_num = len(special_tokens)
+    # TODO: this is a hacky logic that uses some private tokenizer structure which can be changed in HF code
+    assert special_tokens_num < 50
+    unused_ids = [tokenizer.vocab['[unused{}]'.format(i)] for i in range(special_tokens_num)]
+    logger.info('Utilizing the following unused token ids %s', unused_ids)
+
+    for idx, id in enumerate(unused_ids):
+        del tokenizer.vocab['[unused{}]'.format(idx)]
+        tokenizer.vocab[special_tokens[idx]] = id
+        tokenizer.ids_to_tokens[id] = special_tokens[idx]
+
+    tokenizer._additional_special_tokens = list(special_tokens)
+    logger.info('Added special tokenizer.additional_special_tokens %s', tokenizer.additional_special_tokens)
+    logger.info('Tokenizer\'s all_special_tokens %s', tokenizer.all_special_tokens)
 
 
 def get_roberta_tensorizer(args, tokenizer=None):
@@ -202,11 +206,11 @@ class BertTensorizer(Tensorizer):
         if title:
             token_ids = self.tokenizer.encode(title, text_pair=text, add_special_tokens=add_special_tokens,
                                               max_length=self.max_length if apply_max_len else 10000,
-                                              pad_to_max_length=False)
+                                              pad_to_max_length=False, truncation=True)
         else:
             token_ids = self.tokenizer.encode(text, add_special_tokens=add_special_tokens,
                                               max_length=self.max_length if apply_max_len else 10000,
-                                              pad_to_max_length=False)
+                                              pad_to_max_length=False, truncation=True)
 
         seq_len = self.max_length
         if self.pad_to_max and len(token_ids) < seq_len:

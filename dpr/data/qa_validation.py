@@ -13,17 +13,20 @@ import collections
 import logging
 import string
 import unicodedata
-from functools import partial
 from multiprocessing import Pool as ProcessPool
-from typing import Tuple, List, Dict
 
 import regex as re
+from functools import partial
+from typing import Tuple, List, Dict
 
 from dpr.utils.tokenizers import SimpleTokenizer
 
 logger = logging.getLogger(__name__)
 
 QAMatchStats = collections.namedtuple('QAMatchStats', ['top_k_hits', 'questions_doc_hits'])
+
+QATableMatchStats = collections.namedtuple('QAMatchStats',
+                                           ['top_k_chunk_hits', 'top_k_table_hits', 'questions_doc_hits'])
 
 
 def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[List[str]],
@@ -72,6 +75,50 @@ def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[Lis
     return QAMatchStats(top_k_hits, scores)
 
 
+def calculate_chunked_matches(all_docs: Dict[object, Tuple[str, str, int]], answers: List[List[str]],
+                              closest_docs: List[Tuple[List[object], List[float]]], workers_num: int,
+                              match_type: str) -> QATableMatchStats:
+    global dpr_all_documents
+    dpr_all_documents = all_docs
+
+    global dpr_all_tables
+    dpr_all_tables = {}
+
+    for key, table in all_docs.items():
+        table_str, title, table_id = table
+        table_chunks = dpr_all_tables.get(table_id, [])
+        table_chunks.append((table_str, title))
+        dpr_all_tables[table_id] = table_chunks
+
+    tok_opts = {}
+    tokenizer = SimpleTokenizer(**tok_opts)
+
+    processes = ProcessPool(
+        processes=workers_num,
+    )
+
+    logger.info('Matching answers in top docs...')
+    get_score_partial = partial(check_chunked_docs_answer, match_type=match_type, tokenizer=tokenizer)
+    questions_answers_docs = zip(answers, closest_docs)
+    scores = processes.map(get_score_partial, questions_answers_docs)
+    logger.info('Per question validation results len=%d', len(scores))
+
+    n_docs = len(closest_docs[0][0])
+    top_k_hits = [0] * n_docs
+    top_k_orig_hits = [0] * n_docs
+    for s in scores:
+        question_hits, question_orig_doc_hits = s
+        best_hit = next((i for i, x in enumerate(question_hits) if x), None)
+        if best_hit is not None:
+            top_k_hits[best_hit:] = [v + 1 for v in top_k_hits[best_hit:]]
+
+        best_hit = next((i for i, x in enumerate(question_orig_doc_hits) if x), None)
+        if best_hit is not None:
+            top_k_orig_hits[best_hit:] = [v + 1 for v in top_k_orig_hits[best_hit:]]
+
+    return QATableMatchStats(top_k_hits, top_k_orig_hits, scores)
+
+
 def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
     """Search through all the top docs to see if they have any of the answers."""
     answers, (doc_ids, doc_scores) = questions_answers_docs
@@ -93,6 +140,44 @@ def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
             answer_found = True
         hits.append(answer_found)
     return hits
+
+
+def check_chunked_docs_answer(questions_answers_docs, tokenizer, match_type) -> Tuple[List[bool], List[bool]]:
+    answers, (doc_ids, doc_scores) = questions_answers_docs
+
+    global dpr_all_documents, dpr_all_tables
+    hits = []
+    orig_docs_ids = collections.OrderedDict()
+
+    for i, doc_id in enumerate(doc_ids):
+        doc = dpr_all_documents[doc_id]
+        text = doc[0]
+
+        answer_found = False
+        if text is None:  # cannot find the document for some reason
+            logger.warning("no doc in db")
+            hits.append(False)
+            continue
+        if has_answer(answers, text, tokenizer, match_type):
+            answer_found = True
+
+        hits.append(answer_found)
+        orig_doc_id = doc[2]
+
+        if orig_doc_id not in orig_docs_ids and len(orig_docs_ids) < 100:
+            orig_docs_ids[orig_doc_id] = doc_id
+
+    if len(orig_docs_ids) < 100:
+        logger.warning('less than 100 tables per question')
+
+    table_hits = []
+    for k, v in orig_docs_ids.items():
+        table_chuks = dpr_all_tables[k]
+        answer_found = any(
+            has_answer(answers, chunk[0] + ' ' + chunk[1], tokenizer, match_type) for chunk in table_chuks)
+        table_hits.append(answer_found)
+
+    return hits, table_hits
 
 
 def has_answer(answers, text, tokenizer, match_type) -> bool:

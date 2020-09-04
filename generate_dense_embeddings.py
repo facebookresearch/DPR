@@ -15,12 +15,15 @@ import logging
 import os
 import pathlib
 import pickle
-from typing import List, Tuple
+import sys
+from typing import List, Tuple, Dict
 
 import numpy as np
 import torch
 from torch import nn
 
+from dpr.data.biencoder_data import JsonLTablesQADataset
+from dpr.data.tables import read_nq_tables_jsonl, Table
 from dpr.models import init_biencoder_components
 from dpr.options import add_encoder_params, setup_args_gpu, print_args, set_encoder_params_from_state, \
     add_tokenizer_params, add_cuda_params
@@ -53,20 +56,49 @@ def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, t
         out = out.cpu()
 
         ctx_ids = [r[0] for r in ctx_rows[batch_start:batch_start + bsz]]
+        extra_info = []
+        if len(ctx_rows[0]) > 3:
+            extra_info = [r[3:] for r in ctx_rows[batch_start:batch_start + bsz]]
 
         assert len(ctx_ids) == out.size(0)
 
         total += len(ctx_ids)
 
-        results.extend([
-            (ctx_ids[i], out[i].view(-1).numpy())
-            for i in range(out.size(0))
-        ])
+        # TODO: refactor to avoid 'if'
+        if extra_info:
+            results.extend([
+                (ctx_ids[i], out[i].view(-1).numpy(), *extra_info[i])
+                for i in range(out.size(0))
+            ])
+        else:
+            results.extend([
+                (ctx_ids[i], out[i].view(-1).numpy())
+                for i in range(out.size(0))
+            ])
 
         if total % 10 == 0:
             logger.info('Encoded passages %d', total)
 
     return results
+
+
+def split_tables_to_chunks(tables_dict: Dict[str, Table], max_table_len: int) -> List[Tuple[int, str, str, int]]:
+    tables_as_dicts = [t.to_dpr_json() for k, t in tables_dict.items()]
+
+    chunk_id_to_table_id = []
+    chunks = []
+    chunk_id = 0
+    for i, t in enumerate(tables_as_dicts):
+        table_chunks = JsonLTablesQADataset.split_table(t, max_table_len)
+        title = t['caption']
+        for c in table_chunks:
+            # chunk id , text, title, external_id
+            chunks.append((chunk_id, c, title, i))
+            chunk_id += 1
+        chunk_id_to_table_id += [i]*len(table_chunks)
+        if i%1000==0:
+            logger.info('Splitted %d tables to %d chunks', i, len(chunks))
+    return chunks
 
 
 def main(args):
@@ -103,6 +135,10 @@ def main(args):
             reader = csv.DictReader(fin, delimiter="\t")
             # file format: doc_id, doc_text, title
             rows.extend([(row['id'], row['text'], row['wikipedia_title']) for row in reader])
+    elif args.tables_as_passages:
+        logger.info('Parsing Tables ctx db')
+        tables_dict = read_nq_tables_jsonl(args.ctx_file)
+        rows.extend(split_tables_to_chunks(tables_dict, args.tables_chunk_sz))
     else:
         with open(args.ctx_file) as tsvfile:
             reader = csv.reader(tsvfile, delimiter='\t')
@@ -141,6 +177,12 @@ if __name__ == '__main__':
     parser.add_argument('--num_shards', type=int, default=1, help="Total amount of data shards")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size for the passage encoder forward pass")
     parser.add_argument('--new_chunks', action='store_true')
+    parser.add_argument('--tables_as_passages', action='store_true')
+
+    # tmp param
+    #parser.add_argument('--enable_st_selector', action='store_true')
+    parser.add_argument('--special_tokens', type=str, default="['[START_ENT]','[END_ENT]']", )
+    parser.add_argument('--tables_chunk_sz', type=int, default=100, )
 
 
     args = parser.parse_args()

@@ -12,13 +12,13 @@ BiEncoder component + loss function for 'all-in-batch' training
 import collections
 import logging
 import random
-from typing import Tuple, List
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor as T
 from torch import nn
+from typing import Tuple, List
 
 from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 BiEncoderBatch = collections.namedtuple('BiENcoderInput',
                                         ['question_ids', 'question_segments', 'context_ids', 'ctx_segments',
                                          'is_positive', 'hard_negatives', 'encoder_type'])
-#TODO: remove
-rnd=random.Random(0)
+# TODO: remove
+rnd = random.Random(0)
+
 
 def dot_product_scores(q_vectors: T, ctx_vectors: T) -> T:
     """
@@ -248,36 +249,8 @@ class BiEncoder(nn.Module):
             if query_token:
                 # TODO: tmp workaround for EL, remove or revise
                 if query_token == '[START_ENT]':
-                    id = tensorizer.get_token_id('[START_ENT]')
-                    query_tensor = tensorizer.text_to_tensor(question)
-
-                    if id not in query_tensor:
-                        query_tensor_full = tensorizer.text_to_tensor(question, apply_max_len=False)
-                        token_indexes = (query_tensor_full == id).nonzero()
-                        if token_indexes.size(0) > 0:
-                            start_pos = token_indexes[0, 0].item()
-                            # add some randomization to avoid overfitting to a specific token position
-
-                            left_shit = int(tensorizer.max_length / 2)
-                            rnd_shift = int((rnd.random()-0.5) * left_shit/2)
-                            left_shit += rnd_shift
-
-                            query_tensor = query_tensor_full[start_pos - left_shit:]
-                            cls_id = tensorizer.tokenizer.cls_token_id
-                            if query_tensor[0]!= cls_id:
-                                query_tensor = torch.cat([torch.tensor([cls_id]), query_tensor], dim=0)
-
-                            from dpr.models.reader import _pad_to_len
-                            query_tensor = _pad_to_len(query_tensor, tensorizer.get_pad_id(), tensorizer.max_length)
-                            query_tensor[-1] = tensorizer.tokenizer.sep_token_id
-                            #logger.info('aligned query_tensor %s', query_tensor)
-
-                            assert id in query_tensor, 'query_tensor={}'.format(query_tensor)
-                            question_tensors.append(query_tensor)
-                        else:
-                            logger.warning('[START_ENT] toke not found for Entity Linking sample query=%s', question)
-                    else:
-                        question_tensors.append(tensorizer.text_to_tensor(question))
+                    query_span = _select_span_with_token(question, tensorizer, token_str=query_token)
+                    question_tensors.append(query_span)
                 else:
                     question_tensors.append(tensorizer.text_to_tensor(' '.join([query_token, question])))
             else:
@@ -326,3 +299,36 @@ class BiEncoderNllLoss(object):
     @staticmethod
     def get_similarity_function():
         return dot_product_scores
+
+
+def _select_span_with_token(text: str, tensorizer: Tensorizer, token_str: str = '[START_ENT]', ) -> T:
+    id = tensorizer.get_token_id(token_str)
+    query_tensor = tensorizer.text_to_tensor(text)
+
+    if id not in query_tensor:
+        query_tensor_full = tensorizer.text_to_tensor(text, apply_max_len=False)
+        token_indexes = (query_tensor_full == id).nonzero()
+        if token_indexes.size(0) > 0:
+            start_pos = token_indexes[0, 0].item()
+            # add some randomization to avoid overfitting to a specific token position
+
+            left_shit = int(tensorizer.max_length / 2)
+            rnd_shift = int((rnd.random() - 0.5) * left_shit / 2)
+            left_shit += rnd_shift
+
+            query_tensor = query_tensor_full[start_pos - left_shit:]
+            cls_id = tensorizer.tokenizer.cls_token_id
+            if query_tensor[0] != cls_id:
+                query_tensor = torch.cat([torch.tensor([cls_id]), query_tensor], dim=0)
+
+            from dpr.models.reader import _pad_to_len
+            query_tensor = _pad_to_len(query_tensor, tensorizer.get_pad_id(), tensorizer.max_length)
+            query_tensor[-1] = tensorizer.tokenizer.sep_token_id
+            # logger.info('aligned query_tensor %s', query_tensor)
+
+            assert id in query_tensor, 'query_tensor={}'.format(query_tensor)
+            return query_tensor
+        else:
+            raise RuntimeError('[START_ENT] toke not found for Entity Linking sample query={}'.format(question))
+    else:
+        return query_tensor

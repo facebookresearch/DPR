@@ -52,9 +52,9 @@ datasets:
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
       selector:
-        class: dpr.data.biencoder_data.RepSpecificTokenSelector
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
-          token: '[START_ENT]'
+          static_position: 0
 
   fever_train:
     class: dpr.data.biencoder_data.JsonQADataset
@@ -86,6 +86,7 @@ datasets:
           static_position: 0
       is_train_set: True
       shuffle_positives: True
+      max_len: 100
 
   nq_test_tables_short_answers:
     class: dpr.data.biencoder_data.JsonLTablesQADataset
@@ -97,3 +98,21 @@ datasets:
           static_position: 0
       is_train_set: False
       shuffle_positives: False
+      max_len: 100
+
+  nq_train_tables_long_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.long_ans.tables.whole.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: True
+      shuffle_positives: True
+      max_len: 100
+
+
+#class: dpr.data.biencoder_data.RepSpecificTokenSelector
+#params:
+#  token: '[START_ENT]'

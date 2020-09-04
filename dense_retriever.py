@@ -10,12 +10,12 @@
 """
 
 import argparse
-import os
 import csv
 import glob
-import json
 import gzip
+import json
 import logging
+import os
 import pickle
 import time
 from typing import List, Tuple, Dict, Iterator
@@ -26,13 +26,17 @@ import torch
 from torch import Tensor as T
 from torch import nn
 
-from dpr.data.qa_validation import calculate_matches
+from dpr.data.biencoder_data import RepSpecificTokenSelector
+from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches
+from dpr.data.tables import read_nq_tables_jsonl
+from dpr.indexer.faiss_indexers import DenseIndexer, DenseHNSWFlatIndexer, DenseFlatIndexer
 from dpr.models import init_biencoder_components
 from dpr.options import add_encoder_params, setup_args_gpu, print_args, set_encoder_params_from_state, \
     add_tokenizer_params, add_cuda_params
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint
-from dpr.indexer.faiss_indexers import DenseIndexer, DenseHNSWFlatIndexer, DenseFlatIndexer
+from generate_dense_embeddings import split_tables_to_chunks
+from dpr.models.biencoder import BiEncoder, _select_span_with_token
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -46,11 +50,13 @@ class DenseRetriever(object):
     """
     Does passage retrieving over the provided index and question encoder
     """
+
     def __init__(self, question_encoder: nn.Module, batch_size: int, tensorizer: Tensorizer, index: DenseIndexer):
         self.question_encoder = question_encoder
         self.batch_size = batch_size
         self.tensorizer = tensorizer
         self.index = index
+        self.selector = None
 
     def generate_question_vectors(self, questions: List[str]) -> T:
         n = len(questions)
@@ -61,14 +67,27 @@ class DenseRetriever(object):
 
         with torch.no_grad():
             for j, batch_start in enumerate(range(0, n, bsz)):
+                # TODO: tmp hack for EL tokens
+                if self.selector:
+                    batch_questions = questions[batch_start:batch_start + bsz]
+                    batch_token_tensors = [_select_span_with_token(q, self.tensorizer) for q in batch_questions]
 
-                batch_token_tensors = [self.tensorizer.text_to_tensor(q) for q in
-                                       questions[batch_start:batch_start + bsz]]
+                    q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
+                    q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
+                    q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
 
-                q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
-                q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
-                q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
-                _, out, _ = self.question_encoder(q_ids_batch, q_seg_batch, q_attn_mask)
+                    rep_positions = self.selector.get_positions(q_ids_batch, self.tensorizer)
+                    _, out, _ = BiEncoder.get_representation(self.question_encoder, q_ids_batch, q_seg_batch,
+                                                             q_attn_mask, representation_token_pos=rep_positions
+                                                             )
+                else:
+                    batch_token_tensors = [self.tensorizer.text_to_tensor(q) for q in
+                                           questions[batch_start:batch_start + bsz]]
+
+                    q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
+                    q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
+                    q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
+                    _, out, _ = self.question_encoder(q_ids_batch, q_seg_batch, q_attn_mask)
 
                 query_vectors.extend(out.cpu().split(1, dim=0))
 
@@ -91,8 +110,7 @@ class DenseRetriever(object):
         """
         buffer = []
         for i, item in enumerate(iterate_encoded_files(vector_files)):
-            db_id, doc_vector = item
-            buffer.append((db_id, doc_vector))
+            buffer.append(item)
             if 0 < buffer_size == len(buffer):
                 self.index.index_data(buffer)
                 buffer = []
@@ -121,6 +139,14 @@ def parse_qa_csv_file(location) -> Iterator[Tuple[str, List[str]]]:
             yield question, answers
 
 
+def parse_qa_jsonl_file(location) -> Iterator[Tuple[str, List[str]]]:
+    with jsonlines.open(location, mode='r') as jsonl_reader:
+        for jline in jsonl_reader:
+            question = jline['question']
+            answers = jline['answers']
+            yield question, answers
+
+
 def validate(passages: Dict[object, Tuple[str, str]], answers: List[List[str]],
              result_ctx_ids: List[Tuple[List[object], List[float]]],
              workers_num: int, match_type: str) -> List[List[bool]]:
@@ -131,6 +157,24 @@ def validate(passages: Dict[object, Tuple[str, str]], answers: List[List[str]],
     top_k_hits = [v / len(result_ctx_ids) for v in top_k_hits]
     logger.info('Validation results: top k documents hits accuracy %s', top_k_hits)
     return match_stats.questions_doc_hits
+
+
+def validate_tables(passages: Dict[object, Tuple[str, str, int]], answers: List[List[str]],
+                    result_ctx_ids: List[Tuple[List[object], List[float]]],
+                    workers_num: int, match_type: str) -> List[List[bool]]:
+    match_stats = calculate_chunked_matches(passages, answers, result_ctx_ids, workers_num, match_type)
+    top_k_chunk_hits = match_stats.top_k_chunk_hits
+    top_k_table_hits = match_stats.top_k_table_hits
+
+    logger.info('Validation results: top k documents hits %s', top_k_chunk_hits)
+    top_k_hits = [v / len(result_ctx_ids) for v in top_k_chunk_hits]
+    logger.info('Validation results: top k table chunk hits accuracy %s', top_k_hits)
+
+    logger.info('Validation results: top k tables hits %s', top_k_table_hits)
+    top_k_table_hits = [v / len(result_ctx_ids) for v in top_k_table_hits]
+    logger.info('Validation results: top k tables accuracy %s', top_k_table_hits)
+
+    return match_stats.top_k_chunk_hits
 
 
 def load_passages(ctx_file: str, args) -> Dict[object, Tuple[str, str]]:
@@ -157,6 +201,16 @@ def load_passages(ctx_file: str, args) -> Dict[object, Tuple[str, str]]:
             for row in reader:
                 if row[0] != 'id':
                     docs[row[0]] = (row[1], row[2])
+    return docs
+
+
+def load_tables(ctx_file: str, args) -> Dict[object, Tuple[str, str, int]]:
+    docs = {}
+    logger.info('Parsing Tables data from: %s', ctx_file)
+    tables_dict = read_nq_tables_jsonl(args.ctx_file)
+    table_chunks = split_tables_to_chunks(tables_dict, args.tables_chunk_sz)
+    for chunk in table_chunks:
+        docs[chunk[0]] = (chunk[1], chunk[2], chunk[3])
     return docs
 
 
@@ -194,28 +248,25 @@ def save_results(passages: Dict[object, Tuple[str, str]], questions: List[str], 
     logger.info('Saved results * scores  to %s', out_file)
 
 
-def iterate_encoded_files(vector_files: list) -> Iterator[Tuple[object, np.array]]:
+def iterate_encoded_files(vector_files: list) -> Iterator[Tuple]:
     for i, file in enumerate(vector_files):
         logger.info('Reading file %s', file)
         with open(file, "rb") as reader:
             doc_vectors = pickle.load(reader)
             for doc in doc_vectors:
-                db_id, doc_vector = doc
-                yield db_id, doc_vector
-
+                # db_id, doc_vector = doc
+                yield doc
 
 
 def convert_to_kilt(args, dpr_output):
+    logger.info('Converting to KILT format file: %s', dpr_output)
 
     with open(dpr_output, "rt") as fin:
         dpr_output = json.load(fin)
 
-    kilt_gold = []
-
     with jsonlines.open(args.kilt_gold, "r") as reader:
         kilt_gold = list(reader)
     assert len(kilt_gold) == len(dpr_output)
-
 
     chunk_id_to_wikipedia_id = []
     with open(args.ctx_file, "rt", newline="") as fin:
@@ -236,7 +287,8 @@ def convert_to_kilt(args, dpr_output):
                 "output": [{"provenance": provenance}],
             }
             writer.write(kilt_entry)
-            #print(json.dumps(kilt_entry, ensure_ascii=False))
+
+    logger.info('Saved KILT formatted results to: %s', args.kilt_out_file)
 
 
 def main(args):
@@ -272,6 +324,9 @@ def main(args):
 
     retriever = DenseRetriever(encoder, args.batch_size, tensorizer, index)
 
+    # TODO: move this entire tool to hydra cfg
+    if args.enable_st_selector:
+        retriever.selector = RepSpecificTokenSelector(token='[CLS]')
 
     # index all passages
     ctx_files_pattern = args.encoded_ctx_file
@@ -289,7 +344,8 @@ def main(args):
     questions = []
     question_answers = []
 
-    for ds_item in parse_qa_csv_file(args.qa_file):
+    qa_iterator = parse_qa_jsonl_file(args.qa_file) if args.tables_as_passages else parse_qa_csv_file(args.qa_file)
+    for ds_item in qa_iterator:
         question, answers = ds_item
         questions.append(question)
         question_answers.append(answers)
@@ -299,19 +355,28 @@ def main(args):
     # get top k results
     top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), args.n_docs)
 
-    all_passages = load_passages(args.ctx_file, args)
+    if args.tables_as_passages:
+        all_passages = load_tables(args.ctx_file, args)
+    else:
+        all_passages = load_passages(args.ctx_file, args)
 
     if len(all_passages) == 0:
         raise RuntimeError('No passages data found. Please specify ctx_file param properly.')
 
-    questions_doc_hits = validate(all_passages, question_answers, top_ids_and_scores, args.validation_workers,
-                                  args.match)
+    if args.tables_as_passages:
+        questions_doc_hits = validate_tables(all_passages, question_answers, top_ids_and_scores,
+                                             args.validation_workers,
+                                             args.match)
+    else:
+        questions_doc_hits = validate(all_passages, question_answers, top_ids_and_scores, args.validation_workers,
+                                      args.match)
 
     if args.out_file:
         save_results(all_passages, questions, question_answers, top_ids_and_scores, questions_doc_hits, args.out_file)
 
     if args.kilt_out_file:
         convert_to_kilt(args, args.out_file)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -343,8 +408,17 @@ if __name__ == '__main__':
                         help='output .tsv file path to write KILT formatted results to')
     parser.add_argument('--kilt_gold', type=str, default=None,
                         help='output .tsv file path to write KILT formatted results to')
+    parser.add_argument('--tables_as_passages', action='store_true')
+
+    # tmp param
+    parser.add_argument('--enable_st_selector', action='store_true')
+    parser.add_argument('--special_tokens', type=str, default="['[START_ENT]','[END_ENT]']",)
+    parser.add_argument('--tables_chunk_sz', type=int, default=100,)
+
 
     args = parser.parse_args()
+
+    args.special_tokens = eval(args.special_tokens)
 
     assert args.model_file, 'Please specify --model_file checkpoint to init model weights'
 

@@ -237,6 +237,8 @@ class MultiSetDataIterator(object):
                 self.iteration += 1
                 yield (next_item, source_idx)
 
+        # tmp
+        logger.info('Multi set iteration finished: iteration per set: %s', [it.iteration for it in self.iterables])
         [next(it, None) for it in iterators]
 
         # TODO: clear iterators in some non-hacky way
