@@ -52,9 +52,9 @@ datasets:
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
       selector:
-        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        class: dpr.data.biencoder_data.RepSpecificTokenSelector
         params:
-          static_position: 0
+          token: '[START_ENT]'
 
   fever_train:
     class: dpr.data.biencoder_data.JsonQADataset
@@ -65,10 +65,37 @@ datasets:
         params:
           static_position: 0
 
+  wow_train_kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+
   trivia_train_kilt:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+
+  zeroshot-train-kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+
+  hotpot-train-kilt:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
@@ -112,7 +139,3 @@ datasets:
       shuffle_positives: True
       max_len: 100
 
-
-#class: dpr.data.biencoder_data.RepSpecificTokenSelector
-#params:
-#  token: '[START_ENT]'

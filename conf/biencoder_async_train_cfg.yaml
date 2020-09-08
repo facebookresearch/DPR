@@ -39,3 +39,10 @@ special_tokens:
   - '[D]'
 
 special_query_tokens: []
+
+
+ctx_file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
+index_cfg_path: /private/home/vladk/tmp/default_index_discovery.txt
+index_batch_size: 1000
+
+

@@ -57,8 +57,8 @@ class RepSpecificTokenSelector(RepTokenSelector):
         token_indexes_result = []
         found_idx_cnt = 0
         for i in range(bsz):
-            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][
-                0] == i:  # this samples has the special token
+            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:
+                # this samples has the special token
                 token_indexes_result.append(token_indexes[found_idx_cnt])
                 found_idx_cnt += 1
             else:
@@ -98,7 +98,7 @@ class JsonQADataset(Dataset):
         r.query = json_sample['question']
         r.positive_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in json_sample['positive_ctxs']]
         r.negative_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in
-                               json_sample['negative_ctxs']]
+                               json_sample['negative_ctxs']] if 'negative_ctxs' in json_sample else []
         r.hard_negative_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in
                                     json_sample['hard_negative_ctxs']]
         return r
@@ -166,9 +166,8 @@ class JsonLTablesQADataset(Dataset):
         }
         return f[split_type]
 
-
     @classmethod
-    def split_table(cls, t: dict, max_length: int, split_type: str):
+    def split_table(cls, t: dict, max_length: int):
         rows = t['rows']
         header = None
         header_len = 0
@@ -207,7 +206,7 @@ class JsonLTablesQADataset(Dataset):
         return chunks
 
     @classmethod
-    def split_table2(cls, t: dict, max_length: int, split_type: str):
+    def split_table2(cls, t: dict, max_length: int):
         rows = t['rows']
         header_id = 0
 
@@ -232,8 +231,8 @@ class JsonLTablesQADataset(Dataset):
                 # linearize chunk
                 linearized_str = '\n'.join(current_rows) + '\n'
                 chunks.append(linearized_str)
-                current_rows = [header]
-                current_len = header_len
+                current_rows = []
+                current_len = 0
                 # logger.info('!!! chunk %s', linearized_str)
 
         if len(current_rows) > 1:

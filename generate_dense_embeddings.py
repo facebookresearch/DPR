@@ -9,18 +9,17 @@
  Command line tool that produces embeddings for a large documents base based on the pretrained ctx & question encoders
  Supposed to be used in a 'sharded' way to speed up the process.
 """
-import argparse
 import csv
 import logging
 import os
-import pathlib
 import pickle
-import sys
-from typing import List, Tuple, Dict
 
+import argparse
 import numpy as np
+import pathlib
 import torch
 from torch import nn
+from typing import List, Tuple, Dict
 
 from dpr.data.biencoder_data import JsonLTablesQADataset
 from dpr.data.tables import read_nq_tables_jsonl, Table
@@ -37,6 +36,7 @@ if (logger.hasHandlers()):
 console = logging.StreamHandler()
 logger.addHandler(console)
 
+
 def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, tensorizer: Tensorizer,
                     insert_title: bool = True) -> List[Tuple[object, np.array]]:
     n = len(ctx_rows)
@@ -48,9 +48,9 @@ def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, t
         batch_token_tensors = [tensorizer.text_to_tensor(ctx[1], title=ctx[2] if insert_title else None) for ctx in
                                ctx_rows[batch_start:batch_start + bsz]]
 
-        ctx_ids_batch = move_to_device(torch.stack(batch_token_tensors, dim=0),args.device)
-        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch),args.device)
-        ctx_attn_mask = move_to_device(tensorizer.get_attn_mask(ctx_ids_batch),args.device)
+        ctx_ids_batch = move_to_device(torch.stack(batch_token_tensors, dim=0), args.device)
+        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch), args.device)
+        ctx_attn_mask = move_to_device(tensorizer.get_attn_mask(ctx_ids_batch), args.device)
         with torch.no_grad():
             _, out, _ = model(ctx_ids_batch, ctx_seg_batch, ctx_attn_mask)
         out = out.cpu()
@@ -82,21 +82,25 @@ def gen_ctx_vectors(ctx_rows: List[Tuple[object, str, str]], model: nn.Module, t
     return results
 
 
-def split_tables_to_chunks(tables_dict: Dict[str, Table], max_table_len: int) -> List[Tuple[int, str, str, int]]:
+def split_tables_to_chunks(tables_dict: Dict[str, Table], max_table_len: int, split_type: str) -> List[
+    Tuple[int, str, str, int]]:
     tables_as_dicts = [t.to_dpr_json() for k, t in tables_dict.items()]
 
     chunk_id_to_table_id = []
     chunks = []
     chunk_id = 0
     for i, t in enumerate(tables_as_dicts):
-        table_chunks = JsonLTablesQADataset.split_table(t, max_table_len)
+        if split_type == 'type2':
+            table_chunks = JsonLTablesQADataset.split_table2(t, max_table_len)
+        else:
+            table_chunks = JsonLTablesQADataset.split_table(t, max_table_len)
         title = t['caption']
         for c in table_chunks:
             # chunk id , text, title, external_id
             chunks.append((chunk_id, c, title, i))
             chunk_id += 1
-        chunk_id_to_table_id += [i]*len(table_chunks)
-        if i%1000==0:
+        chunk_id_to_table_id += [i] * len(table_chunks)
+        if i % 1000 == 0:
             logger.info('Splitted %d tables to %d chunks', i, len(chunks))
     return chunks
 
@@ -105,7 +109,7 @@ def main(args):
     saved_state = load_states_from_checkpoint(args.model_file)
     set_encoder_params_from_state(saved_state.encoder_params, args)
     print_args(args)
-    
+
     tensorizer, encoder, _ = init_biencoder_components(args.encoder_model_type, args, inference_only=True)
 
     encoder = encoder.ctx_model
@@ -180,10 +184,9 @@ if __name__ == '__main__':
     parser.add_argument('--tables_as_passages', action='store_true')
 
     # tmp param
-    #parser.add_argument('--enable_st_selector', action='store_true')
+    # parser.add_argument('--enable_st_selector', action='store_true')
     parser.add_argument('--special_tokens', type=str, default="['[START_ENT]','[END_ENT]']", )
     parser.add_argument('--tables_chunk_sz', type=int, default=100, )
-
 
     args = parser.parse_args()
 
@@ -191,5 +194,4 @@ if __name__ == '__main__':
 
     setup_args_gpu(args)
 
-    
     main(args)

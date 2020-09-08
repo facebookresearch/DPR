@@ -10,20 +10,20 @@
  Pipeline to train DPR Biencoder
 """
 
-import argparse
 import logging
-import math
 import os
 import random
 import sys
-import time
-from typing import Tuple, List
 
+import argparse
 import hydra
+import math
+import time
 import torch
 from omegaconf import DictConfig
 from torch import Tensor as T
 from torch import nn
+from typing import Tuple, List
 
 from dpr.data.biencoder_data import JsonQADataset
 from dpr.models import init_biencoder_components
@@ -94,6 +94,7 @@ class BiEncoderTrainer(object):
                            shuffle=True,
                            shuffle_seed: int = 0,
                            offset: int = 0,
+                           rank: int = 0
                            ):
 
         args_param = self.args.train_files if is_train_set else self.args.dev_files
@@ -124,7 +125,7 @@ class BiEncoderTrainer(object):
                                                      ) for ds in
                                  hydra_datasets]
             return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle,
-                                        sampling_rates=sampling_rates if is_train_set else [1])
+                                        sampling_rates=sampling_rates if is_train_set else [1], rank=rank)
 
     def get_data_iterator(self, path, batch_size: int, shuffle=True,
                           shuffle_seed: int = 0,
@@ -151,10 +152,12 @@ class BiEncoderTrainer(object):
 
     def get_multi_task_data_iterator(self, paths: List[str], batch_size: int, shuffle=True,
                                      shuffle_seed: int = 0,
-                                     offset: int = 0):  # MultiSetDataIterator
+                                     offset: int = 0,
+                                     rank: int = 0
+                                     ):  # MultiSetDataIterator
         logger.info('Initializing multi task/set data %s', paths)
         sharded_iterators = [self.get_data_iterator(path, batch_size, shuffle, shuffle_seed, offset) for path in paths]
-        return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle)
+        return MultiSetDataIterator(sharded_iterators, shuffle_seed, shuffle, rank=rank)
 
     def run_train(self, ):
         args = self.args
@@ -163,6 +166,7 @@ class BiEncoderTrainer(object):
         train_iterator = self.get_data_iterator2(cfg.train.batch_size, True,
                                                  shuffle=True,
                                                  shuffle_seed=cfg.seed, offset=self.start_batch,
+                                                 rank=cfg.local_rank,
                                                  )
 
         logger.info("  Total iterations per epoch=%d", train_iterator.max_iterations)
@@ -218,7 +222,7 @@ class BiEncoderTrainer(object):
         self.biencoder.eval()
 
         if not self.dev_iterator:
-            self.dev_iterator = self.get_data_iterator2(cfg.train.dev_batch_size, False, shuffle=False)
+            self.dev_iterator = self.get_data_iterator2(cfg.train.dev_batch_size, False, shuffle=False, rank=cfg.local_rank)
         data_iterator = self.dev_iterator
 
         total_loss = 0.0
@@ -231,9 +235,9 @@ class BiEncoderTrainer(object):
 
         dataset = 0
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
-            # tmp:
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
+            logger.info('Eval step: %d ,rnk=%s', i, cfg.local_rank)
             biencoder_input = BiEncoder.create_biencoder_input2(samples_batch, self.tensorizer,
                                                                 True,
                                                                 num_hard_negatives, num_other_negatives, shuffle=False)
@@ -277,7 +281,7 @@ class BiEncoderTrainer(object):
         distributed_factor = self.distributed_factor
 
         if not self.dev_iterator:
-            self.dev_iterator = self.get_data_iterator2(cfg.train.dev_batch_size, False, shuffle=False)
+            self.dev_iterator = self.get_data_iterator2(cfg.train.dev_batch_size, False, shuffle=False, rank=cfg.local_rank,)
         data_iterator = self.dev_iterator
 
         sub_batch_size = args.val_av_rank_bsz
@@ -452,10 +456,11 @@ class BiEncoderTrainer(object):
                 rolling_train_loss = 0.0
 
             if data_iteration % eval_step == 0:
-                logger.info('Validation: Epoch: %d Step: %d/%d', epoch, data_iteration, epoch_batches)
+                logger.info('rank=%d, Validation: Epoch: %d Step: %d/%d', cfg.local_rank, epoch, data_iteration, epoch_batches)
                 self.validate_and_save(epoch, train_data_iterator.get_iteration(), scheduler)
                 self.biencoder.train()
 
+        logger.info('Epoch finished on %d', cfg.local_rank)
         self.validate_and_save(epoch, data_iteration, scheduler)
 
         epoch_loss = (epoch_loss / epoch_batches) if epoch_batches > 0 else 0
