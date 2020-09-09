@@ -246,7 +246,7 @@ class MultiSetDataIterator(object):
             logger.info('rank=%d; Multi set iteration: source %d, batches to be taken: %s', self.rank, source, src_its)
             data_src_indices.extend([source] * src_its)
 
-            iterators.append( self.iterables[source].iterate_ds_sampled_data(src_its,epoch=epoch))
+            iterators.append(self.iterables[source].iterate_ds_sampled_data(src_its,epoch=epoch))
 
         if self.shuffle:
             # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
@@ -256,11 +256,11 @@ class MultiSetDataIterator(object):
         logger.info('rank=%d; data_src_indices len=%d', self.rank, len(data_src_indices))
         for i, source_idx in enumerate(data_src_indices):
             it = iterators[source_idx]
-            logger.info('Multi set iteration: source selected: %d', self.rank, source_idx)
+            #logger.info('Multi set iteration: source selected: %d', self.rank, source_idx)
             next_item = next(it, None)
             if next_item is not None:
                 self.iteration += 1
-                logger.info('rank=%d; Multi set iteration: %d', self.rank, self.iteration)
+                #logger.info('rank=%d; Multi set iteration: %d', self.rank, self.iteration)
                 yield (next_item, source_idx)
             else:
                 logger.warning('rank=%d; Next item in the source %s is None', self.rank, source_idx)
