@@ -42,7 +42,8 @@ special_query_tokens: []
 
 
 ctx_file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
-index_cfg_path: /private/home/vladk/tmp/default_index_discovery.txt
+index_cfg_path:
 index_batch_size: 1000
 
+#index_cfg_path /private/home/vladk/tmp/index_4s_test_discovery.txt
 
