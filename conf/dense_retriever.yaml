@@ -1,0 +1,125 @@
+defaults:
+  - encoder: hf_bert
+
+qa_sources:
+  nq_test:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
+
+  nq_train:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/nq-train.qa.csv
+
+  nq_dev:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/nq-dev.qa.csv
+
+  nq_tables_test:
+    _target_: dpr.data.retriever_data.JsonlQASrc
+    file: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
+
+  nq_test_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
+
+  trivia_test_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-test-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-test-multikilt.tsv
+
+  trivia_dev_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-kilt.jsonl
+
+  zeroshot_test_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-test-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/structured_zeroshot-test_without_answers-kilt.jsonl
+
+  zeroshot_dev_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-kilt.jsonl
+
+  fever_dev_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-kilt.jsonl
+
+  ay_dev_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-kilt.jsonl
+    selector:
+      class: dpr.data.biencoder_data.RepSpecificTokenSelector
+      params:
+        token: '[START_ENT]'
+
+
+ctx_sources:
+  dpr_wiki:
+    _target_: dpr.data.retriever_data.CsvCtxSrc
+    file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
+    id_prefix: 'wiki:'
+
+  nq_tables:
+    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+    file: /checkpoint/vladk/datasets/tables/nq_all.tables.jsonl
+    tables_chunk_sz: 100
+    id_prefix: 'nqt:'
+
+  kilt_wiki:
+    _target_: dpr.data.retriever_data.KiltCsvCtxSrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
+
+  wiki_tables:
+    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+    file: /private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl
+    tables_chunk_sz: 100
+    id_prefix: 'wt:'
+
+
+
+qa_dataset:
+ctx_datatsets:
+
+#Glob paths to encoded passages (from generate_dense_embeddings tool)
+encoded_ctx_files: []
+
+out_file:
+# "regex" or "string"
+match: string
+n_docs: 100
+validation_workers: 16
+batch_size: 128
+do_lower_case: True
+#Temporal memory data buffer size (in samples) for indexer
+index_buffer: 50000
+hnsw_index: False
+save_or_load_index: False
+kilt_out_file:
+model_file:
+validate_as_tables: False
+rpc_retriever_cfg_file:
+
+
+special_tokens:
+  - '[Q]'
+  - '[R]'
+  - '[F]'
+  - '[START_ENT]'
+  - '[END_ENT]'
+  - '[D]'
+
+# TODO: move to a sub conf
+local_rank: -1
+global_loss_buf_sz: 150000
+device:
+distributed_world_size:
+no_cuda: False
+n_gpu:
+fp16: False
+fp16_opt_level: O1
+
