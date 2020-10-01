@@ -526,7 +526,6 @@ class BiEncoderTrainer(object):
         train_data_iterator: ShardedDataIterator,
     ):
 
-        args = self.args
         cfg = self.cfg
         rolling_train_loss = 0.0
         epoch_loss = 0
@@ -563,7 +562,7 @@ class BiEncoderTrainer(object):
                 num_hard_negatives,
                 num_other_negatives,
                 shuffle=True,
-                shuffle_positives=args.shuffle_positive_ctx,
+                shuffle_positives=cfg.shuffle_positive_ctx,
                 query_token=special_token,
             )
 

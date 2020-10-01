@@ -4,6 +4,7 @@ import glob
 import logging
 import os
 import random
+from typing import Dict, List, Tuple
 
 import hydra
 import jsonlines
@@ -11,13 +12,12 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 from torch import Tensor as T
-from typing import Dict, List, Tuple
 
+from dpr.data.tables import Table
 from dpr.utils.data_utils import read_data_from_json_files, Tensorizer
 
 logger = logging.getLogger(__name__)
-
-BiEncoderPassage = collections.namedtuple('BiEncoderPassage', ['text', 'title', ])
+BiEncoderPassage = collections.namedtuple("BiEncoderPassage", ["text", "title"])
 
 
 class BiEncoderSample(object):
@@ -41,7 +41,7 @@ class RepStaticPosTokenSelector(RepTokenSelector):
 
 
 class RepSpecificTokenSelector(RepTokenSelector):
-    def __init__(self, token: str = '[CLS]'):
+    def __init__(self, token: str = "[CLS]"):
         self.token = token
         self.token_id = None
 
@@ -57,16 +57,19 @@ class RepSpecificTokenSelector(RepTokenSelector):
         token_indexes_result = []
         found_idx_cnt = 0
         for i in range(bsz):
-            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:
+            if (
+                found_idx_cnt < token_indexes.size(0)
+                and token_indexes[found_idx_cnt][0] == i
+            ):
                 # this samples has the special token
                 token_indexes_result.append(token_indexes[found_idx_cnt])
                 found_idx_cnt += 1
             else:
-                logger.warning('missing special token %s', input_ids[i])
+                logger.warning("missing special token %s", input_ids[i])
 
                 token_indexes_result.append(
-                    torch.tensor([i, 0]).to(
-                        input_ids.device))  # setting 0-th token, i.e. CLS for BERT as the special one
+                    torch.tensor([i, 0]).to(input_ids.device)
+                )  # setting 0-th token, i.e. CLS for BERT as the special one
         token_indexes_result = torch.stack(token_indexes_result, dim=0)
         return token_indexes_result
 
@@ -89,18 +92,29 @@ class JsonQADataset(Dataset):
     def load_data(self):
         data = read_data_from_json_files(self.data_files)
         # filter those without positive ctx
-        self.data = [r for r in data if len(r['positive_ctxs']) > 0]
-        logger.info('Total cleaned data size: {}'.format(len(self.data)))
+        self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
+        logger.info("Total cleaned data size: {}".format(len(self.data)))
 
     def __getitem__(self, index) -> BiEncoderSample:
         json_sample = self.data[index]
         r = BiEncoderSample()
-        r.query = json_sample['question']
-        r.positive_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in json_sample['positive_ctxs']]
-        r.negative_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in
-                               json_sample['negative_ctxs']] if 'negative_ctxs' in json_sample else []
-        r.hard_negative_passages = [BiEncoderPassage(ctx['text'], ctx['title']) for ctx in
-                                    json_sample['hard_negative_ctxs']]
+        r.query = json_sample["question"]
+        r.positive_passages = [
+            BiEncoderPassage(ctx["text"], ctx["title"])
+            for ctx in json_sample["positive_ctxs"]
+        ]
+        r.negative_passages = (
+            [
+                BiEncoderPassage(ctx["text"], ctx["title"])
+                for ctx in json_sample["negative_ctxs"]
+            ]
+            if "negative_ctxs" in json_sample
+            else []
+        )
+        r.hard_negative_passages = [
+            BiEncoderPassage(ctx["text"], ctx["title"])
+            for ctx in json_sample["hard_negative_ctxs"]
+        ]
         return r
 
     def __len__(self):
@@ -108,11 +122,17 @@ class JsonQADataset(Dataset):
 
 
 class JsonLTablesQADataset(Dataset):
-    def __init__(self, data_file_pattern: str, selector: DictConfig, is_train_set: bool,
-                 shuffle_positives: bool = False,
-                 max_negatives: int = 1, seed: int = 0, max_len=100,
-                 split_type: str = 'type1',
-                 ):
+    def __init__(
+        self,
+        data_file_pattern: str,
+        selector: DictConfig,
+        is_train_set: bool,
+        shuffle_positives: bool = False,
+        max_negatives: int = 1,
+        seed: int = 0,
+        max_len=100,
+        split_type: str = "type1",
+    ):
         super().__init__(selector)
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
@@ -121,24 +141,24 @@ class JsonLTablesQADataset(Dataset):
         self.max_negatives = max_negatives
         self.rnd = random.Random(seed)
         self.max_len = max_len
-        self.get_lin_func = JsonLTablesQADataset.get_lin_func(split_type)
+        self.linearize_func = JsonLTablesQADataset.get_lin_func(split_type)
 
     def load_data(self):
         data = []
         for path in self.data_files:
-            with jsonlines.open(path, mode='r') as jsonl_reader:
+            with jsonlines.open(path, mode="r") as jsonl_reader:
                 data += [jline for jline in jsonl_reader]
 
         # filter those without positive ctx
-        self.data = [r for r in data if len(r['positive_ctxs']) > 0]
-        logger.info('Total cleaned data size: {}'.format(len(self.data)))
+        self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
+        logger.info("Total cleaned data size: {}".format(len(self.data)))
 
     def __getitem__(self, index) -> BiEncoderSample:
         json_sample = self.data[index]
         r = BiEncoderSample()
-        r.query = json_sample['question']
-        positive_ctxs = json_sample['positive_ctxs']
-        hard_negative_ctxs = json_sample['hard_negative_ctxs']
+        r.query = json_sample["question"]
+        positive_ctxs = json_sample["positive_ctxs"]
+        hard_negative_ctxs = json_sample["hard_negative_ctxs"]
 
         if self.shuffle_positives:
             self.rnd.shuffle(positive_ctxs)
@@ -146,13 +166,17 @@ class JsonLTablesQADataset(Dataset):
         if self.is_train_set:
             self.rnd.shuffle(hard_negative_ctxs)
         positive_ctxs = positive_ctxs[0:1]
-        hard_negative_ctxs = hard_negative_ctxs[0:self.max_negatives]
+        hard_negative_ctxs = hard_negative_ctxs[0 : self.max_negatives]
 
-        r.positive_passages = [BiEncoderPassage(self.get_lin_func(ctx, True), ctx['caption']) for ctx in
-                               positive_ctxs]
+        r.positive_passages = [
+            BiEncoderPassage(self.linearize_func(self, ctx, True), ctx["caption"])
+            for ctx in positive_ctxs
+        ]
         r.negative_passages = []
-        r.hard_negative_passages = [BiEncoderPassage(self.get_lin_func(ctx, False), ctx['caption']) for ctx in
-                                    hard_negative_ctxs]
+        r.hard_negative_passages = [
+            BiEncoderPassage(self.linearize_func(self, ctx, False), ctx["caption"])
+            for ctx in hard_negative_ctxs
+        ]
         return r
 
     def __len__(self):
@@ -161,14 +185,14 @@ class JsonLTablesQADataset(Dataset):
     @classmethod
     def get_lin_func(cls, split_type: str):
         f = {
-            'type1': JsonLTablesQADataset._linearize_table,
-            'type2': JsonLTablesQADataset._linearize_table2
+            "type1": JsonLTablesQADataset._linearize_table,
+            "type2": JsonLTablesQADataset._linearize_table2,
         }
         return f[split_type]
 
     @classmethod
     def split_table(cls, t: dict, max_length: int):
-        rows = t['rows']
+        rows = t["rows"]
         header = None
         header_len = 0
         start_row = 0
@@ -193,21 +217,21 @@ class JsonLTablesQADataset(Dataset):
                 current_len += row_len
             if current_len >= max_length:
                 # linearize chunk
-                linearized_str = '\n'.join(current_rows) + '\n'
+                linearized_str = "\n".join(current_rows) + "\n"
                 chunks.append(linearized_str)
                 current_rows = [header]
                 current_len = header_len
                 # logger.info('!!! chunk %s', linearized_str)
 
         if len(current_rows) > 1:
-            linearized_str = '\n'.join(current_rows) + '\n'
+            linearized_str = "\n".join(current_rows) + "\n"
             chunks.append(linearized_str)
             # logger.info('!!! chunk %s', linearized_str)
         return chunks
 
     @classmethod
-    def split_table2(cls, t: dict, max_length: int):
-        rows = t['rows']
+    def split_table2(cls, t: dict, max_length: int) -> List[str]:
+        rows = t["rows"]
         header_id = 0
 
         # get the first non empty row as the "header"
@@ -216,6 +240,8 @@ class JsonLTablesQADataset(Dataset):
             if len(row_lin) > 1:  # TODO: change to checking cell value tokens
                 header_id = i
                 break
+
+        # logger.info("!!! table %s", t)
 
         chunks = []
         current_rows = []
@@ -229,20 +255,28 @@ class JsonLTablesQADataset(Dataset):
                 current_len += row_len
             if current_len >= max_length:
                 # linearize chunk
-                linearized_str = '\n'.join(current_rows) + '\n'
+                linearized_str = "\n".join(current_rows) + "\n"
                 chunks.append(linearized_str)
                 current_rows = []
                 current_len = 0
-                # logger.info('!!! chunk %s', linearized_str)
+                # logger.info("!!! chunk %s", linearized_str)
 
         if len(current_rows) > 1:
-            linearized_str = '\n'.join(current_rows) + '\n'
+            linearized_str = "\n".join(current_rows) + "\n"
             chunks.append(linearized_str)
-            # logger.info('!!! chunk %s', linearized_str)
+            # logger.info("!!! chunk %s", linearized_str)
+
+        if len(chunks) == 0:
+            row = rows[header_id]
+            result = ["row {} ".format(row["row"])]
+            result += [c["value"] for c in row["columns"] if c["value"] != ""]
+            row_lin = "; ".join(result) + "\n"
+            chunks.append(row_lin)
+        logger.info("!!! chunks %d", len(chunks))
         return chunks
 
     def _linearize_table(self, t: dict, is_positive: bool) -> List[str]:
-        rows = t['rows']
+        rows = t["rows"]
         selected_rows = set()
         rows_linearized = []
         total_words_len = 0
@@ -258,7 +292,7 @@ class JsonLTablesQADataset(Dataset):
 
         # split to chunks
         if is_positive:
-            row_idx_with_answers = [ap[0] for ap in t['answer_pos']]
+            row_idx_with_answers = [ap[0] for ap in t["answer_pos"]]
 
             if self.shuffle_positives:
                 self.rnd.shuffle(row_idx_with_answers)
@@ -288,9 +322,9 @@ class JsonLTablesQADataset(Dataset):
                     if total_words_len >= self.max_len:
                         break
 
-        linearized_str = ''
+        linearized_str = ""
         for r in rows_linearized:
-            linearized_str += (r + '\n')
+            linearized_str += r + "\n"
 
         # logger.info('!!! selected_rows %s', selected_rows)
         # logger.info('!!! total_words_len %s', total_words_len)
@@ -299,10 +333,12 @@ class JsonLTablesQADataset(Dataset):
         return linearized_str
 
     def _linearize_table2(self, t: dict, is_positive: bool) -> List[str]:
-        rows = t['rows']
+        rows = t["rows"]
         selected_rows = set()
         rows_linearized = []
         total_words_len = 0
+
+        # logger.info("!!! table %s", t)
 
         # get the first non empty row as the "header"
 
@@ -316,13 +352,15 @@ class JsonLTablesQADataset(Dataset):
 
         # split to chunks
         if is_positive:
-            row_idx_with_answers = [ap[0] for ap in t['answer_pos']]
+            row_idx_with_answers = [ap[0] for ap in t["answer_pos"]]
 
             if self.shuffle_positives:
                 self.rnd.shuffle(row_idx_with_answers)
             for i in row_idx_with_answers:
                 if i not in selected_rows:
-                    row_lin, row_len = JsonLTablesQADataset._linearize_row2(rows[i], rows[header_row_id])
+                    row_lin, row_len = JsonLTablesQADataset._linearize_row2(
+                        rows[i], rows[header_row_id]
+                    )
                     selected_rows.add(i)
                     rows_linearized.append(row_lin)
                     total_words_len += row_len
@@ -336,7 +374,9 @@ class JsonLTablesQADataset(Dataset):
                 rows_indexes = [*range(len(rows))]
             for i in rows_indexes:
                 if i not in selected_rows:
-                    row_lin, row_len = JsonLTablesQADataset._linearize_row2(rows[i], rows[header_row_id])
+                    row_lin, row_len = JsonLTablesQADataset._linearize_row2(
+                        rows[i], rows[header_row_id]
+                    )
                     if len(row_lin) > 1:  # TODO: change to checking cell value tokens
                         selected_rows.add(i)
                         rows_linearized.append(row_lin)
@@ -344,41 +384,49 @@ class JsonLTablesQADataset(Dataset):
                     if total_words_len >= self.max_len:
                         break
 
-        linearized_str = ''
+        linearized_str = ""
         for r in rows_linearized:
-            linearized_str += (r + '\n')
+            linearized_str += r + "\n"
 
-        logger.info('!!! selected_rows %s', selected_rows)
-        logger.info('!!! total_words_len %s', total_words_len)
-        logger.info('!!! positive linearized_str %s', linearized_str)
+        # logger.info("!!! selected_rows %s", selected_rows)
+        # logger.info("!!! total_words_len %s", total_words_len)
+        # logger.info("!!! positive linearized_str %s", linearized_str)
 
         return linearized_str
 
     @classmethod
     def _linearize_row(cls, row: dict) -> Tuple[str, int]:
-        cell_values = [c['value'] for c in row['columns']]
-        total_words = sum(len(c.split(' ')) for c in cell_values)
-        return ', '.join([c['value'] for c in row['columns']]), total_words
+        cell_values = [c["value"] for c in row["columns"]]
+        total_words = sum(len(c.split(" ")) for c in cell_values)
+        return ", ".join([c["value"] for c in row["columns"]]), total_words
 
     @classmethod
     def _linearize_row2(cls, row: dict, header: dict) -> Tuple[str, int]:
-        header_cells = [c['value'] for c in header['columns']]
-        cell_values = [c['value'] for c in row['columns']]
+        header_cells = [c["value"] for c in header["columns"]]
+        cell_values = [c["value"] for c in row["columns"]]
         h = len(header_cells)
         n = len(cell_values)
-        result = ['row {} ;'.format(row['row'])]
+        result = ["row {} ".format(row["row"])]
         for i in range(n):
+            if cell_values[i] == "":
+                continue
             if i < h:
-                result += [header_cells[i], 'is', cell_values[i]]
+                result += [" ".join([header_cells[i], "is", cell_values[i]])]
             else:
                 result += [cell_values[i]]
         total_words = len(result)
-        return '; '.join(result), total_words
+        return "; ".join(result), total_words
 
 
 class TRECDataset(Dataset):
-    def __init__(self, data_dir: str, passages_filename: str, queries_filename: str, qrels_filename: str,
-                 selector: DictConfig):
+    def __init__(
+        self,
+        data_dir: str,
+        passages_filename: str,
+        queries_filename: str,
+        qrels_filename: str,
+        selector: DictConfig,
+    ):
         super().__init__(selector)
 
         self.passages_file = os.path.join(data_dir, passages_filename)
@@ -393,25 +441,29 @@ class TRECDataset(Dataset):
         self.qrels = []
 
     def load_data(self):
-        logger.info('Reading TREC dataset')
-        logger.info('Reading passages list from: %s', self.passages_file)
+        logger.info("Reading TREC dataset")
+        logger.info("Reading passages list from: %s", self.passages_file)
         self.passages_dict = _load_tsv_as_dict(self.passages_file)
-        logger.info('Total TREC passages: %d', len(self.passages_dict))
+        logger.info("Total TREC passages: %d", len(self.passages_dict))
 
-        logger.info('Reading queries from: %s', self.queries_file)
+        logger.info("Reading queries from: %s", self.queries_file)
         self.queries = _load_tsv_as_dict(self.queries_file)
-        logger.info('Total TREC queries: %d', len(self.queries))
+        logger.info("Total TREC queries: %d", len(self.queries))
 
-        logger.info('Reading triplets data from: %s', self.qidpidtriples_file)
+        logger.info("Reading triplets data from: %s", self.qidpidtriples_file)
         self.qrels = _load_qrels(self.qidpidtriples_file)
-        logger.info('Total TREC samples: %d', len(self.qrels))
+        logger.info("Total TREC samples: %d", len(self.qrels))
 
     def __getitem__(self, index) -> BiEncoderSample:
         qrel = self.qrels[index]
         r = BiEncoderSample()
         r.query = self.queries[qrel[0]]
-        r.positive_passages = [BiEncoderPassage(self.passages_dict[pid], None) for pid in qrel[1]]
-        r.hard_negative_passages = [BiEncoderPassage(self.passages_dict[pid], None) for pid in qrel[2]]
+        r.positive_passages = [
+            BiEncoderPassage(self.passages_dict[pid], None) for pid in qrel[1]
+        ]
+        r.hard_negative_passages = [
+            BiEncoderPassage(self.passages_dict[pid], None) for pid in qrel[2]
+        ]
         r.negative_passages = []
         return r
 
@@ -422,15 +474,17 @@ class TRECDataset(Dataset):
 def _load_tsv_as_dict(ctx_file: str) -> Dict[int, str]:
     docs = {}
     with open(ctx_file) as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t', )
+        reader = csv.reader(tsvfile, delimiter="\t")
         # file format: id, text
         for row in reader:
-            if row[0] != 'id':
+            if row[0] != "id":
                 docs[int(row[0])] = row[1]
     return docs
 
 
-def _load_qrels(qrels_file: str, max_passages_per_q: int = 30) -> List[Tuple[int, List[int], List[int]]]:
+def _load_qrels(
+    qrels_file: str, max_passages_per_q: int = 30
+) -> List[Tuple[int, List[int], List[int]]]:
     """
     Loads TREC's (Triples QID PID) Format
     :param qrels_file:
@@ -440,27 +494,42 @@ def _load_qrels(qrels_file: str, max_passages_per_q: int = 30) -> List[Tuple[int
 
     result = {}
     with open(qrels_file) as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t', )
+        reader = csv.reader(tsvfile, delimiter="\t")
         # file format: qid, positive pid, negative pid
         for row in reader:
-            if row[0] != 'id':
+            if row[0] != "id":
                 qid = int(row[0])
-
                 q_info = result.get(qid, ([], []))
-
                 if len(q_info[0]) < max_passages_per_q:
                     pid = int(row[1])
-                    if pid not in q_info[0]:  # assuming positive pid is usually ~ 1 sample
+                    if (
+                        pid not in q_info[0]
+                    ):  # assuming positive pid is usually ~ 1 sample
                         q_info[0].append(pid)
-
                 if len(q_info[1]) < max_passages_per_q:
                     pid = int(row[2])
                     q_info[1].append(pid)  # assuming negatives are unique per question
                 result[qid] = q_info
-
-            # tmp:
-            # if len(result)>100:
-            #    break
-
     # convert to list
     return [(k, v[0], v[1]) for k, v in result.items()]
+
+
+def split_tables_to_chunks(
+    tables_dict: Dict[str, Table], max_table_len: int, split_type: str = "type1"
+) -> List[Tuple[int, str, str, int]]:
+    tables_as_dicts = [t.to_dpr_json() for k, t in tables_dict.items()]
+    chunks = []
+    chunk_id = 0
+    for i, t in enumerate(tables_as_dicts):
+        if split_type == "type2":
+            table_chunks = JsonLTablesQADataset.split_table2(t, max_table_len)
+        else:
+            table_chunks = JsonLTablesQADataset.split_table(t, max_table_len)
+        title = t["caption"]
+        for c in table_chunks:
+            # chunk id , text, title, external_id
+            chunks.append((chunk_id, c, title, i))
+            chunk_id += 1
+        if i % 1000 == 0:
+            logger.info("Splitted %d tables to %d chunks", i, len(chunks))
+    return chunks

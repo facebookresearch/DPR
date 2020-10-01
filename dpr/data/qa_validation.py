@@ -19,19 +19,27 @@ import regex as re
 from functools import partial
 from typing import Tuple, List, Dict
 
+from dpr.data.retriever_data import TableChunk
 from dpr.utils.tokenizers import SimpleTokenizer
 
 logger = logging.getLogger(__name__)
 
-QAMatchStats = collections.namedtuple('QAMatchStats', ['top_k_hits', 'questions_doc_hits'])
+QAMatchStats = collections.namedtuple(
+    "QAMatchStats", ["top_k_hits", "questions_doc_hits"]
+)
 
-QATableMatchStats = collections.namedtuple('QAMatchStats',
-                                           ['top_k_chunk_hits', 'top_k_table_hits', 'questions_doc_hits'])
+QATableMatchStats = collections.namedtuple(
+    "QAMatchStats", ["top_k_chunk_hits", "top_k_table_hits", "questions_doc_hits"]
+)
 
 
-def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[List[str]],
-                      closest_docs: List[Tuple[List[object], List[float]]], workers_num: int,
-                      match_type: str) -> QAMatchStats:
+def calculate_matches(
+    all_docs: Dict[object, Tuple[str, str]],
+    answers: List[List[str]],
+    closest_docs: List[Tuple[List[object], List[float]]],
+    workers_num: int,
+    match_type: str,
+) -> QAMatchStats:
     """
     Evaluates answers presence in the set of documents. This function is supposed to be used with a large collection of
     documents and results. It internally forks multiple sub-processes for evaluation and then merges results
@@ -47,23 +55,26 @@ def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[Lis
     """
     global dpr_all_documents
     dpr_all_documents = all_docs
+    logger.info("dpr_all_documents size %d", len(dpr_all_documents))
 
     tok_opts = {}
     tokenizer = SimpleTokenizer(**tok_opts)
 
-    processes = ProcessPool(
-        processes=workers_num,
+    processes = ProcessPool(processes=workers_num)
+    logger.info("Matching answers in top docs...")
+    get_score_partial = partial(
+        check_answer, match_type=match_type, tokenizer=tokenizer
     )
 
-    logger.info('Matching answers in top docs...')
-
-    get_score_partial = partial(check_answer, match_type=match_type, tokenizer=tokenizer)
-
     questions_answers_docs = zip(answers, closest_docs)
-
     scores = processes.map(get_score_partial, questions_answers_docs)
 
-    logger.info('Per question validation results len=%d', len(scores))
+    # Single threaded validation
+    # scores = []
+    # for item in questions_answers_docs:
+    #    scores.append(check_answer(item, tokenizer, match_type))
+
+    logger.info("Per question validation results len=%d", len(scores))
 
     n_docs = len(closest_docs[0][0])
     top_k_hits = [0] * n_docs
@@ -75,17 +86,21 @@ def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[Lis
     return QAMatchStats(top_k_hits, scores)
 
 
-def calculate_chunked_matches(all_docs: Dict[object, Tuple[str, str, int]], answers: List[List[str]],
-                              closest_docs: List[Tuple[List[object], List[float]]], workers_num: int,
-                              match_type: str) -> QATableMatchStats:
+def calculate_chunked_matches(
+    all_docs: Dict[object, TableChunk],
+    answers: List[List[str]],
+    closest_docs: List[Tuple[List[object], List[float]]],
+    workers_num: int,
+    match_type: str,
+) -> QATableMatchStats:
     global dpr_all_documents
     dpr_all_documents = all_docs
 
     global dpr_all_tables
     dpr_all_tables = {}
 
-    for key, table in all_docs.items():
-        table_str, title, table_id = table
+    for key, table_chunk in all_docs.items():
+        table_str, title, table_id = table_chunk.t
         table_chunks = dpr_all_tables.get(table_id, [])
         table_chunks.append((table_str, title))
         dpr_all_tables[table_id] = table_chunks
@@ -93,15 +108,15 @@ def calculate_chunked_matches(all_docs: Dict[object, Tuple[str, str, int]], answ
     tok_opts = {}
     tokenizer = SimpleTokenizer(**tok_opts)
 
-    processes = ProcessPool(
-        processes=workers_num,
-    )
+    processes = ProcessPool(processes=workers_num)
 
-    logger.info('Matching answers in top docs...')
-    get_score_partial = partial(check_chunked_docs_answer, match_type=match_type, tokenizer=tokenizer)
+    logger.info("Matching answers in top docs...")
+    get_score_partial = partial(
+        check_chunked_docs_answer, match_type=match_type, tokenizer=tokenizer
+    )
     questions_answers_docs = zip(answers, closest_docs)
     scores = processes.map(get_score_partial, questions_answers_docs)
-    logger.info('Per question validation results len=%d', len(scores))
+    logger.info("Per question validation results len=%d", len(scores))
 
     n_docs = len(closest_docs[0][0])
     top_k_hits = [0] * n_docs
@@ -142,7 +157,9 @@ def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
     return hits
 
 
-def check_chunked_docs_answer(questions_answers_docs, tokenizer, match_type) -> Tuple[List[bool], List[bool]]:
+def check_chunked_docs_answer(
+    questions_answers_docs, tokenizer, match_type
+) -> Tuple[List[bool], List[bool]]:
     answers, (doc_ids, doc_scores) = questions_answers_docs
 
     global dpr_all_documents, dpr_all_tables
@@ -168,13 +185,15 @@ def check_chunked_docs_answer(questions_answers_docs, tokenizer, match_type) -> 
             orig_docs_ids[orig_doc_id] = doc_id
 
     if len(orig_docs_ids) < 100:
-        logger.warning('less than 100 tables per question')
+        logger.warning("less than 100 tables per question")
 
     table_hits = []
     for k, v in orig_docs_ids.items():
         table_chuks = dpr_all_tables[k]
         answer_found = any(
-            has_answer(answers, chunk[0] + ' ' + chunk[1], tokenizer, match_type) for chunk in table_chuks)
+            has_answer(answers, chunk[0] + " " + chunk[1], tokenizer, match_type)
+            for chunk in table_chuks
+        )
         table_hits.append(answer_found)
 
     return hits, table_hits
@@ -187,7 +206,7 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
     """
     text = _normalize(text)
 
-    if match_type == 'string':
+    if match_type == "string":
         # Answer is a list of possible strings
         text = tokenizer.tokenize(text).words(uncased=True)
 
@@ -197,10 +216,10 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
             single_answer = single_answer.words(uncased=True)
 
             for i in range(0, len(text) - len(single_answer) + 1):
-                if single_answer == text[i: i + len(single_answer)]:
+                if single_answer == text[i : i + len(single_answer)]:
                     return True
 
-    elif match_type == 'regex':
+    elif match_type == "regex":
         # Answer is a regex
         for single_answer in answers:
             single_answer = _normalize(single_answer)
@@ -212,10 +231,7 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
 def regex_match(text, pattern):
     """Test if a regex pattern is contained within a text."""
     try:
-        pattern = re.compile(
-            pattern,
-            flags=re.IGNORECASE + re.UNICODE + re.MULTILINE,
-        )
+        pattern = re.compile(pattern, flags=re.IGNORECASE + re.UNICODE + re.MULTILINE)
     except BaseException:
         return False
     return pattern.search(text) is not None
@@ -228,14 +244,14 @@ def exact_match_score(prediction, ground_truth):
 
 def _normalize_answer(s):
     def remove_articles(text):
-        return re.sub(r'\b(a|an|the)\b', ' ', text)
+        return re.sub(r"\b(a|an|the)\b", " ", text)
 
     def white_space_fix(text):
-        return ' '.join(text.split())
+        return " ".join(text.split())
 
     def remove_punc(text):
         exclude = set(string.punctuation)
-        return ''.join(ch for ch in text if ch not in exclude)
+        return "".join(ch for ch in text if ch not in exclude)
 
     def lower(text):
         return text.lower()
@@ -244,4 +260,4 @@ def _normalize_answer(s):
 
 
 def _normalize(text):
-    return unicodedata.normalize('NFD', text)
+    return unicodedata.normalize("NFD", text)

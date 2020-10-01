@@ -65,7 +65,7 @@ datasets:
         params:
           static_position: 0
 
-  wow_train_kilt:
+  wow_train:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-train-multikilt.json
@@ -83,7 +83,7 @@ datasets:
         params:
           static_position: 0
 
-  zeroshot-train-kilt:
+  zeroshot_train:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json
@@ -92,7 +92,16 @@ datasets:
         params:
           static_position: 0
 
-  hotpot-train-kilt:
+  zeroshot_dev:
+    class: dpr.data.biencoder_data.JsonQADataset
+    params:
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.json
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+
+  hotpot_train_kilt:
     class: dpr.data.biencoder_data.JsonQADataset
     params:
       data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
@@ -101,41 +110,11 @@ datasets:
         params:
           static_position: 0
 
-
-  # NQ Tables
-  nq_train_tables_short_answers:
-    class: dpr.data.biencoder_data.JsonLTablesQADataset
+  trex_train:
+    class: dpr.data.biencoder_data.JsonQADataset
     params:
-      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.tables.whole.bm25.jsonl
+      data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-train-multikilt.json
       selector:
         class: dpr.data.biencoder_data.RepStaticPosTokenSelector
         params:
           static_position: 0
-      is_train_set: True
-      shuffle_positives: True
-      max_len: 100
-
-  nq_test_tables_short_answers:
-    class: dpr.data.biencoder_data.JsonLTablesQADataset
-    params:
-      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
-      selector:
-        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
-        params:
-          static_position: 0
-      is_train_set: False
-      shuffle_positives: False
-      max_len: 100
-
-  nq_train_tables_long_answers:
-    class: dpr.data.biencoder_data.JsonLTablesQADataset
-    params:
-      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.long_ans.tables.whole.jsonl
-      selector:
-        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
-        params:
-          static_position: 0
-      is_train_set: True
-      shuffle_positives: True
-      max_len: 100
-
