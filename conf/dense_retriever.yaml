@@ -1,61 +1,8 @@
 defaults:
   - encoder: hf_bert
+  - datasets: retriever_query_src
 
-qa_sources:
-  nq_test:
-    _target_: dpr.data.retriever_data.CsvQASrc
-    file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
 
-  nq_train:
-    _target_: dpr.data.retriever_data.CsvQASrc
-    file: /private/home/scottyih/playground/bert-qa/data/nq-train.qa.csv
-
-  nq_dev:
-    _target_: dpr.data.retriever_data.CsvQASrc
-    file: /private/home/scottyih/playground/bert-qa/data/nq-dev.qa.csv
-
-  nq_tables_test:
-    _target_: dpr.data.retriever_data.JsonlQASrc
-    file: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
-
-  nq_test_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
-
-  trivia_test_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-test-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-test-multikilt.tsv
-
-  trivia_dev_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-kilt.jsonl
-
-  zeroshot_test_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-test-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/structured_zeroshot-test_without_answers-kilt.jsonl
-
-  zeroshot_dev_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-kilt.jsonl
-
-  fever_dev_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-kilt.jsonl
-
-  ay_dev_kilt:
-    _target_: dpr.data.retriever_data.KiltCsvQASrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-multikilt.tsv
-    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-kilt.jsonl
-    selector:
-      class: dpr.data.biencoder_data.RepSpecificTokenSelector
-      params:
-        token: '[START_ENT]'
 
 
 ctx_sources:

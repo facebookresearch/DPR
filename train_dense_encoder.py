@@ -532,9 +532,9 @@ class BiEncoderTrainer(object):
         epoch_correct_predictions = 0
 
         log_result_step = cfg.train.log_batch_step
-        rolling_loss_step = args.train_rolling_loss_step
-        num_hard_negatives = args.hard_negatives
-        num_other_negatives = args.other_negatives
+        rolling_loss_step = cfg.train.train_rolling_loss_step
+        num_hard_negatives = cfg.train.hard_negatives
+        num_other_negatives = cfg.train.other_negatives
         seed = cfg.seed
         self.biencoder.train()
         epoch_batches = train_data_iterator.max_iterations
@@ -585,7 +585,7 @@ class BiEncoderTrainer(object):
             epoch_loss += loss.item()
             rolling_train_loss += loss.item()
 
-            if args.fp16:
+            if cfg.fp16:
                 from apex import amp
 
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -601,7 +601,7 @@ class BiEncoderTrainer(object):
                         self.biencoder.parameters(), cfg.train.max_grad_norm
                     )
 
-            if (i + 1) % args.gradient_accumulation_steps == 0:
+            if (i + 1) % cfg.train.gradient_accumulation_steps == 0:
                 self.optimizer.step()
                 scheduler.step()
                 self.biencoder.zero_grad()

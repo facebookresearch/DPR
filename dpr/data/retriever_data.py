@@ -16,9 +16,10 @@ TableChunk = collections.namedtuple("TableChunk", ["text", "title", "table_id"])
 
 
 class QASrc(object):
-    def __init__(self, selector: DictConfig = None):
+    def __init__(self, selector: DictConfig = None, special_query_token: str = None):
         self.data = None
         self.selector = hydra.utils.instantiate(selector) if selector else None
+        self.special_query_token = special_query_token
 
     def __getitem__(self, index):
         return self.data[index]
@@ -35,8 +36,9 @@ class CsvQASrc(QASrc):
         answers_col: int = 1,
         id_col: int = -1,
         selector: DictConfig = None,
+        special_query_token: str = None,
     ):
-        super().__init__(selector=selector)
+        super().__init__(selector=selector, special_query_token=special_query_token)
         self.question_col = question_col
         self.answers_col = answers_col
         self.id_col = id_col
@@ -93,8 +95,16 @@ class KiltCsvQASrc(CsvQASrc):
         answers_col: int = 1,
         id_col: int = -1,
         selector: DictConfig = None,
+        special_query_token: str = None,
     ):
-        super().__init__(file, question_col, answers_col, id_col, selector=selector)
+        super().__init__(
+            file,
+            question_col,
+            answers_col,
+            id_col,
+            selector=selector,
+            special_query_token=special_query_token,
+        )
         self.kilt_gold_file = kilt_gold_file
 
 

@@ -63,7 +63,9 @@ class DenseRetriever(object):
         self.tensorizer = tensorizer
         self.selector = None
 
-    def generate_question_vectors(self, questions: List[str]) -> T:
+    def generate_question_vectors(
+        self, questions: List[str], query_token: str = None
+    ) -> T:
         n = len(questions)
         bsz = self.batch_size
         query_vectors = []
@@ -72,21 +74,42 @@ class DenseRetriever(object):
 
         with torch.no_grad():
             for j, batch_start in enumerate(range(0, n, bsz)):
-                # TODO: tmp hack for EL tokens
-                if self.selector:
-                    batch_questions = questions[batch_start : batch_start + bsz]
+                batch_questions = questions[batch_start : batch_start + bsz]
+
+                if query_token:
+                    # TODO: tmp workaround for EL, remove or revise
+                    if query_token == "[START_ENT]":
+                        batch_token_tensors = [
+                            _select_span_with_token(
+                                q, self.tensorizer, token_str=query_token
+                            )
+                            for q in batch_questions
+                        ]
+                    else:
+                        batch_token_tensors = [
+                            self.tensorizer.text_to_tensor(" ".join([query_token, q]))
+                            for q in batch_questions
+                        ]
+                else:
                     batch_token_tensors = [
-                        _select_span_with_token(q, self.tensorizer)
-                        for q in batch_questions
+                        self.tensorizer.text_to_tensor(q) for q in batch_questions
                     ]
 
-                    q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
-                    q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
-                    q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
+                q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
+                q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
+                q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
 
+                if self.selector:
                     rep_positions = self.selector.get_positions(
                         q_ids_batch, self.tensorizer
                     )
+
+                    if j == 0:
+                        logger.info(
+                            "!!! using selector for token %s", self.selector.token
+                        )
+                    logger.info("!!! rep positions %s", rep_positions)
+
                     _, out, _ = BiEncoder.get_representation(
                         self.question_encoder,
                         q_ids_batch,
@@ -95,14 +118,6 @@ class DenseRetriever(object):
                         representation_token_pos=rep_positions,
                     )
                 else:
-                    batch_token_tensors = [
-                        self.tensorizer.text_to_tensor(q)
-                        for q in questions[batch_start : batch_start + bsz]
-                    ]
-
-                    q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
-                    q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
-                    q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
                     _, out, _ = self.question_encoder(
                         q_ids_batch, q_seg_batch, q_attn_mask
                     )
@@ -425,7 +440,7 @@ def main(cfg: DictConfig):
     ds_key = cfg.qa_dataset
     logger.info("qa_dataset: %s", ds_key)
 
-    qa_src = hydra.utils.instantiate(cfg.qa_sources[ds_key])
+    qa_src = hydra.utils.instantiate(cfg.datasets[ds_key])
     qa_src.load_data()
 
     for ds_item in qa_src.data:
@@ -446,14 +461,14 @@ def main(cfg: DictConfig):
         else:
             index = DenseFlatIndexer(vector_size)
         retriever = LocalFaissRetriever(encoder, cfg.batch_size, tensorizer, index)
-    questions_tensor = retriever.generate_question_vectors(questions)
+    logger.info("Using special token %s", qa_src.special_query_token)
+    questions_tensor = retriever.generate_question_vectors(
+        questions, query_token=qa_src.special_query_token
+    )
 
     if qa_src.selector:
         logger.info("Using custom representation token selector")
         retriever.selector = qa_src.selector
-
-    # else:
-    #    retriever.selector = RepSpecificTokenSelector(token="[CLS]")
 
     all_passages = {}
     id_prefixes = []
