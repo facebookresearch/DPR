@@ -12,3 +12,9 @@ train:
   gradient_accumulation_steps: 1
   num_train_epochs: 40
   eval_per_epoch: 1
+  hard_negatives: 1
+  other_negatives: 0
+  val_av_rank_hard_neg: 30
+  val_av_rank_other_neg: 30
+  val_av_rank_bsz: 128
+  val_av_rank_max_qs: 10000

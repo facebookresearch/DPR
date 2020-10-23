@@ -59,6 +59,7 @@ class Table(object):
         self.caption = caption
         self.body: List[Row] = []
         self.key = None
+        self.gold_match = False
 
     def __str__(self):
         table_str = "<T>: {}\n".format(self.caption)
@@ -80,10 +81,13 @@ class Table(object):
             r.visit(tokens_function, i)
 
     def to_dpr_json(self):
-        return {
+        r = {
             "caption": self.caption,
             "rows": [r.to_dpr_json(i) for i, r in enumerate(self.body)],
         }
+        if self.gold_match:
+            r["gold_match"] = 1
+        return r
 
 
 class NQTableParser(object):
@@ -258,8 +262,6 @@ def convert_to_csv_for_lucene(tables_dict, out_file: str):
             id += 1
             # strip all
             table_text = get_table_string_for_answer_check(v)
-
-            # logger.info('i =%s', i)
             writer.writerow([id, table_text, v.caption])
     logger.info("Saved to %s", out_file)
 
@@ -307,8 +309,7 @@ def prepare_answers(answers) -> List[List[str]]:
 
 
 def has_prepared_answer(prep_answers: List[List[str]], text):
-    """Check if a document contains an answer string.
-    """
+    """Check if a document contains an answer string."""
     text = normalize(text)
     # Answer is a list of possible strings
     text = tokenize(text)
@@ -336,8 +337,7 @@ def has_prepared_answer2(prep_answers: List[List[str]], text: List[str]):
 
 
 def has_answer(answers, text, regMatxh=False):
-    """Check if a document contains an answer string.
-    """
+    """Check if a document contains an answer string."""
 
     text = normalize(text)
 
@@ -360,25 +360,22 @@ def has_answer(answers, text, regMatxh=False):
 
 
 def convert_search_res_to_dpr_and_eval(
-    res_file, all_tables_file_jsonl, nq_table_file, out_file
+    res_file, all_tables_file_jsonl, nq_table_file, out_file, gold_res_file: str = None
 ):
     db = {}
     id = 0
-
     tables_dict = read_nq_tables_jsonl(all_tables_file_jsonl)
-
     for _, v in tables_dict.items():
         id += 1
         db[id] = v
 
     logger.info("db size %s", len(db))
     total = 0
-
     dpr_results = {}
     import torch
 
     bm25_per_topk_hits = torch.tensor([0] * 100)
-
+    qas = []
     with open(res_file) as tsvfile:
         reader = csv.reader(tsvfile, delimiter="\t")
         # file format: id, text
@@ -388,7 +385,7 @@ def convert_search_res_to_dpr_and_eval(
             answers = eval(row[1])
 
             prep_answers = prepare_answers(answers)
-
+            qas.append((q, prep_answers))
             # logger.info('question %s', q)
 
             question_hns = []
@@ -437,23 +434,57 @@ def convert_search_res_to_dpr_and_eval(
     logger.info("total %s", total)
     logger.info("bm25_per_topk_hits %s", bm25_per_topk_hits)
 
-    # return
+    if gold_res_file:
+        logger.info("Processing gold_res_file")
+        with open(gold_res_file) as cFile:
+            csvReader = csv.reader(cFile, delimiter=",")
+            for row in csvReader:
+                q_id = int(row[0])
+                qas_tuple = qas[q_id]
+                prep_answers = qas_tuple[1]
+                question_gold_positive_match = None
+                q = qas_tuple[0]
 
+                # logger.info("q=%s q_id=%s", q, q_id)
+                answers_links = None
+                for field in row[1:]:
+                    psg_id = int(field.split()[0])
+                    # logger.info("psg_id=%s", psg_id)
+                    # if psg_id >= len(db):
+                    #    continue
+                    table = db[psg_id]
+                    answer_locations = []
+
+                    def check_answer(tokens, row_idx: int, cell_idx: int):
+                        if has_prepared_answer2(prep_answers, tokens):
+                            answer_locations.append((row_idx, cell_idx))
+
+                    table.visit(check_answer)
+                    has_answer = len(answer_locations) > 0
+                    if has_answer and question_gold_positive_match is None:
+                        question_gold_positive_match = table
+                        question_gold_positive_match.gold_match = True
+                        answers_links = answer_locations
+
+                if question_gold_positive_match is None:
+                    logger.info("No gold match for q=%s, q_id=%s", q, q_id)
+                else:  # inject into ctx+ at the first position
+                    question_positives, hns, ans_links = dpr_results[q]
+                    question_positives.insert(0, question_gold_positive_match)
+                    ans_links.insert(0, answers_links)
+
+    # return
     out_results = []
     with jsonlines.open(nq_table_file, mode="r") as jsonl_reader:
         for jline in jsonl_reader:
             q = jline["question"]
-
             gold_positive_table = jline["contexts"][0]
-
             mask = gold_positive_table["html_mask"]
             # page_url = jline['doc_url']
             title = jline["title"]
-
             p = NQTableParser(gold_positive_table["tokens"], mask, title)
             tables = p.parse()
             # select the one with the answer(s)
-
             prep_answers = prepare_answers(jline["short_answers"])
 
             tables_with_answers = []
@@ -477,21 +508,16 @@ def convert_search_res_to_dpr_and_eval(
                 # tables_with_answers.append(tables[0])
 
             positive_ctxs, hard_neg_ctxs, answers_table_links = dpr_results[q]
-
-            positive_ctxs = tables_with_answers + positive_ctxs
-            tables_answer_locations = tables_answer_locations + answers_table_links
-
+            positive_ctxs = positive_ctxs + tables_with_answers
+            tables_answer_locations = answers_table_links + tables_answer_locations
             assert len(positive_ctxs) == len(tables_answer_locations)
-
             positive_ctxs = [t.to_dpr_json() for t in positive_ctxs]
 
             # set has_answer attributes
             for i, ctx_json in enumerate(positive_ctxs):
                 answer_links = tables_answer_locations[i]
                 ctx_json["answer_pos"] = answer_links
-
             hard_neg_ctxs = [t.to_dpr_json() for t in hard_neg_ctxs]
-
             out_results.append(
                 {
                     "question": q,
@@ -606,6 +632,40 @@ def calc_questions_overlap(tables_file, regular_file, dev_file):
     logger.info("overlap %d", len(tab_questions.intersection(reg_questions)))
 
 
+def convert_train_jsonl_to_ctxmatch(path: str, out_file: str):
+    def get_table_string_for_ctx_match(table: dict):  # this doesn't use caption
+        table_text = table["caption"] + " . "
+        for r in table["rows"]:
+            table_text += " . ".join([c["value"] for c in r["columns"]])
+        table_text += " . "
+        return table_text
+
+    results = []
+    with jsonlines.open(path, mode="r") as jsonl_reader:
+        for jline in jsonl_reader:
+            if len(jline["positive_ctxs"]) == 0:
+                continue
+            ctx_pos = jline["positive_ctxs"][0]
+            table_str = get_table_string_for_ctx_match(ctx_pos)
+            q = jline["question"]
+            results.append((q, table_str))
+
+            if len(results) % 1000 == 0:
+                logger.info("results %d", len(results))
+
+    shards_sz = 3000
+    shard = 0
+
+    for s in range(0, len(results), shards_sz):
+        chunk = results[s : s + shards_sz]
+        shard_file = out_file + ".shard_{}".format(shard)
+        with jsonlines.open(shard_file, mode="w") as writer:
+            logger.info("Saving to %s", shard_file)
+            for i, item in enumerate(chunk):
+                writer.write({"id": s + i, "question": item[0], "context": item[1]})
+        shard += 1
+
+
 if __name__ == "__main__":
 
     maxInt = sys.maxsize
@@ -622,12 +682,32 @@ if __name__ == "__main__":
 
     # read_nq_tables_jsonl('/checkpoint/vladk/datasets/tables/nq_all.tables.jsonl', '/checkpoint/vladk/datasets/tables/nq_all.tables.whole_for_bm25.csv')
 
+    # read_nq_tables_jsonl(
+    #    "/private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl",
+    #    "/checkpoint/vladk/datasets/tables/wiki_tables.whole_for_bm25.csv",
+    # )
+
+    """
+    convert_train_jsonl_to_ctxmatch(
+        "/checkpoint/vladk/datasets/tables/dpr.nq_train.tables.whole.bm25.jsonl",
+        "/checkpoint/vladk/datasets/tables/dpr.nq_train.tables.jsonl",
+    )
+    """
+
     # convert_jsonl_to_qas_tsv('/checkpoint/vladk/datasets/tables/nq-train.short_answer_table.jsonl', '/checkpoint/vladk/datasets/tables/nq-train.short_answer_table.tsv')
     # convert_jsonl_to_qas_tsv('/checkpoint/vladk/datasets/tables/nq-train.long_answer_table.jsonl', '/checkpoint/vladk/datasets/tables/nq-train.long_answer_table.tsv')
     # convert_jsonl_to_qas_tsv('/checkpoint/vladk/datasets/tables/nq-test.short_answer_table.jsonl','/checkpoint/vladk/datasets/tables/nq-test.short_answer_table.tsv')
 
     # convert_long_ans_to_dpr('/checkpoint/vladk/datasets/tables/nq-train.long_answer_table.jsonl',
     #                        '/checkpoint/vladk/datasets/tables/dpr.nq_train.long_ans.tables.whole.jsonl')
+
+    convert_search_res_to_dpr_and_eval(
+        "/private/home/vladk/playground/bert-qa/code/lucene/out/nq-train-short-answer-table.top100.psg.b0.4.k0.9.all-wiki.csv",
+        "/private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl",
+        "/checkpoint/vladk/datasets/tables/nq-train.short_answer_table.jsonl",
+        "/checkpoint/vladk/datasets/tables/nq-train.all_wiki_match.jsonl",
+        gold_res_file="/checkpoint/vladk/datasets/tables/dpr.nq_train.tables.all_wiki_matches.out",
+    )
 
     """
     convert_search_res_to_dpr_and_eval(
@@ -646,14 +726,14 @@ if __name__ == "__main__":
         '/checkpoint/vladk/datasets/tables/nq-test.short_answer_table.jsonl',
         '/checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl')
     """
-
+    """
     calc_questions_overlap(
         "/checkpoint/vladk/datasets/tables/dpr.nq_train.tables.whole.bm25.jsonl",
         "/checkpoint/vladk/dpr_open_source/nq-train.qa.csv",  # "/checkpoint/vladk/dpr_open_source/biencoder-nq-train.json",
         "/checkpoint/vladk/dpr_open_source/nq-dev.qa.csv",  # /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json",
     )
     """
-
+    """
     calc_questions_overlap(
         "/checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl",
         "/checkpoint/vladk/dpr_open_source/nq-test.qa.csv",

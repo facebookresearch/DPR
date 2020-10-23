@@ -75,17 +75,38 @@ class RepSpecificTokenSelector(RepTokenSelector):
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, selector: DictConfig):
+    def __init__(
+        self,
+        selector: DictConfig,
+        special_token: str = None,
+        shared_encoder: bool = False,
+        shuffle_positives: bool = False,
+    ):
         # TODO: move to conf_utils
         self.selector = hydra.utils.instantiate(selector)
+        self.special_token = special_token
+        self.shared_encoder = shared_encoder
+        self.shuffle_positives = shuffle_positives
 
     def __getitem__(self, index) -> BiEncoderSample:
         raise NotImplementedError
 
 
 class JsonQADataset(Dataset):
-    def __init__(self, data_file_pattern: str, selector: DictConfig):
-        super().__init__(selector)
+    def __init__(
+        self,
+        data_file_pattern: str,
+        selector: DictConfig,
+        special_token: str = None,
+        shared_encoder: bool = False,
+        shuffle_positives: bool = False,
+    ):
+        super().__init__(
+            selector,
+            special_token=special_token,
+            shared_encoder=shared_encoder,
+            shuffle_positives=shuffle_positives,
+        )
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
 
@@ -120,6 +141,17 @@ class JsonQADataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def get_qas(self) -> Tuple[List[str], List[str]]:
+        return [s["question"] for s in self.data], [s["answers"] for s in self.data]
+
+    def get_qas_range(
+        self, start_idx: int, end_idx: int
+    ) -> Tuple[List[str], List[str]]:
+        return (
+            [s["question"] for s in self.data[start_idx:end_idx]],
+            [s["answers"] for s in self.data[start_idx:end_idx]],
+        )
+
 
 class JsonLTablesQADataset(Dataset):
     def __init__(
@@ -133,10 +165,9 @@ class JsonLTablesQADataset(Dataset):
         max_len=100,
         split_type: str = "type1",
     ):
-        super().__init__(selector)
+        super().__init__(selector, shuffle_positives=shuffle_positives)
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
-        self.shuffle_positives = shuffle_positives
         self.is_train_set = is_train_set
         self.max_negatives = max_negatives
         self.rnd = random.Random(seed)
@@ -426,9 +457,9 @@ class TRECDataset(Dataset):
         queries_filename: str,
         qrels_filename: str,
         selector: DictConfig,
+        special_token: str = None,
     ):
-        super().__init__(selector)
-
+        super().__init__(selector, special_token=special_token)
         self.passages_file = os.path.join(data_dir, passages_filename)
         self.queries_file = os.path.join(data_dir, queries_filename)
         self.qidpidtriples_file = os.path.join(data_dir, qrels_filename)

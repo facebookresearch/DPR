@@ -2,9 +2,6 @@ defaults:
   - encoder: hf_bert
   - datasets: retriever_query_src
 
-
-
-
 ctx_sources:
   dpr_wiki:
     _target_: dpr.data.retriever_data.CsvCtxSrc
@@ -14,6 +11,12 @@ ctx_sources:
   nq_tables:
     _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
     file: /checkpoint/vladk/datasets/tables/nq_all.tables.jsonl
+    tables_chunk_sz: 100
+    id_prefix: 'nqt:'
+
+  nq_train_tables:
+    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+    file: /checkpoint/vladk/datasets/tables/nq_train.tables.jsonl
     tables_chunk_sz: 100
     id_prefix: 'nqt:'
 
@@ -27,6 +30,26 @@ ctx_sources:
     tables_chunk_sz: 100
     id_prefix: 'wt:'
 
+  wiki_with_lists:
+    _target_: dpr.data.retriever_data.CsvCtxSrc
+    file: /private/home/barlaso/data/wikipedia/passages_with_lists_w100.tsv
+    id_prefix: 'wikil:'
+
+  wiki_info_boxes:
+    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+    file: /private/home/barlaso/data/wikipedia/wiki.infoboxes.20181220.dump.jsonl
+    tables_chunk_sz: 100
+    id_prefix: 'wib:'
+
+indexers:
+  flat:
+    _target_: dpr.indexer.faiss_indexers.DenseFlatIndexer
+
+  hnsw:
+    _target_: dpr.indexer.faiss_indexers.DenseHNSWFlatIndexer
+
+  hnsw_sq:
+    _target_: dpr.indexer.faiss_indexers.DenseHNSWSQIndexer
 
 
 qa_dataset:
@@ -42,15 +65,12 @@ n_docs: 100
 validation_workers: 16
 batch_size: 128
 do_lower_case: True
-#Temporal memory data buffer size (in samples) for indexer
-index_buffer: 50000
-hnsw_index: False
 save_or_load_index: False
 kilt_out_file:
 model_file:
 validate_as_tables: False
 rpc_retriever_cfg_file:
-
+indexer: flat
 
 special_tokens:
   - '[Q]'

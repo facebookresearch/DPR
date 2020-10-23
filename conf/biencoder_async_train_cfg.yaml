@@ -1,7 +1,7 @@
 defaults:
   - encoder: hf_bert
   - train: biencoder_default
-  - datasets: rep_from_cls_tokens
+  - datasets: rep_from_cls
 
 train_datasets:
 dev_datasets:
@@ -11,17 +11,14 @@ train_sampling_rates:
 
 do_lower_case: True
 fix_ctx_encoder: False
-val_av_rank_start_epoch: 30
+val_av_rank_start_epoch: 1
 seed: 12345
 checkpoint_file_name: dpr_biencoder
 model_file:
 
-shuffle_positive_ctx: False
-
-
 # TODO: move to a sub conf
 local_rank: -1
-global_loss_buf_sz: 150000
+global_loss_buf_sz: 592000
 device:
 distributed_world_size:
 no_cuda: False
@@ -44,9 +41,19 @@ ctx_file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
 # TODO: move to a separate config group?
 index_cfg_path:
 index_batch_size: 1000
-index_rebuild_updates: 5000
-index_ratio: 0.2
+# not currently in use
+# index_rebuild_updates: 5000
+# TODO: remove. use index_rebuild_updates instead
+index_rebuild_epochs: 5
+index_max_epoch: 20
+index_ratio: 1
 index_train_ratio: 0.5
 index_nprobe: 32
 index_faiss_factory: ivf_simple
 index_centroids: 5000
+index_search_topk_k: 20
+async_max_hn: 10
+
+
+ignore_checkpoint_ofsset: True
+ignore_checkpoint_optimizer: True

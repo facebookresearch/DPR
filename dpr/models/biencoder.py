@@ -26,9 +26,18 @@ from dpr.utils.data_utils import normalize_question
 
 logger = logging.getLogger(__name__)
 
-BiEncoderBatch = collections.namedtuple('BiENcoderInput',
-                                        ['question_ids', 'question_segments', 'context_ids', 'ctx_segments',
-                                         'is_positive', 'hard_negatives', 'encoder_type'])
+BiEncoderBatch = collections.namedtuple(
+    "BiENcoderInput",
+    [
+        "question_ids",
+        "question_segments",
+        "context_ids",
+        "ctx_segments",
+        "is_positive",
+        "hard_negatives",
+        "encoder_type",
+    ],
+)
 # TODO: remove
 rnd = random.Random(0)
 
@@ -54,8 +63,13 @@ class BiEncoder(nn.Module):
     """ Bi-Encoder model component. Encapsulates query/question and context/passage encoders.
     """
 
-    def __init__(self, question_model: nn.Module, ctx_model: nn.Module, fix_q_encoder: bool = False,
-                 fix_ctx_encoder: bool = False):
+    def __init__(
+        self,
+        question_model: nn.Module,
+        ctx_model: nn.Module,
+        fix_q_encoder: bool = False,
+        fix_ctx_encoder: bool = False,
+    ):
         super(BiEncoder, self).__init__()
         self.question_model = question_model
         self.ctx_model = ctx_model
@@ -63,54 +77,90 @@ class BiEncoder(nn.Module):
         self.fix_ctx_encoder = fix_ctx_encoder
 
     @staticmethod
-    def get_representation(sub_model: nn.Module, ids: T, segments: T, attn_mask: T, fix_encoder: bool = False,
-                           representation_token_pos=0
-                           ) -> (
-            T, T, T):
+    def get_representation(
+        sub_model: nn.Module,
+        ids: T,
+        segments: T,
+        attn_mask: T,
+        fix_encoder: bool = False,
+        representation_token_pos=0,
+    ) -> (T, T, T):
         sequence_output = None
         pooled_output = None
         hidden_states = None
         if ids is not None:
             if fix_encoder:
                 with torch.no_grad():
-                    sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask,
-                                                                              representation_token_pos=representation_token_pos)
+                    sequence_output, pooled_output, hidden_states = sub_model(
+                        ids,
+                        segments,
+                        attn_mask,
+                        representation_token_pos=representation_token_pos,
+                    )
                 if sub_model.training:
                     sequence_output.requires_grad_(requires_grad=True)
                     pooled_output.requires_grad_(requires_grad=True)
             else:
-                sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask,
-                                                                          representation_token_pos=representation_token_pos)
+                sequence_output, pooled_output, hidden_states = sub_model(
+                    ids,
+                    segments,
+                    attn_mask,
+                    representation_token_pos=representation_token_pos,
+                )
 
         return sequence_output, pooled_output, hidden_states
 
-    def forward(self, question_ids: T, question_segments: T, question_attn_mask: T, context_ids: T, ctx_segments: T,
-                ctx_attn_mask: T, encoder_type: str = 'mixed', representation_token_pos=0) -> Tuple[T, T]:
+    def forward(
+        self,
+        question_ids: T,
+        question_segments: T,
+        question_attn_mask: T,
+        context_ids: T,
+        ctx_segments: T,
+        ctx_attn_mask: T,
+        encoder_type: str = "mixed",
+        representation_token_pos=0,
+    ) -> Tuple[T, T]:
 
-        q_encoder = self.question_model if encoder_type in ['mixed', 'q_only'] else self.ctx_model
-        _q_seq, q_pooled_out, _q_hidden = self.get_representation(q_encoder, question_ids, question_segments,
-                                                                  question_attn_mask, self.fix_q_encoder,
-                                                                  representation_token_pos=representation_token_pos
-                                                                  )
+        q_encoder = (
+            self.question_model
+            if encoder_type in ["mixed", "q_only"]
+            else self.ctx_model
+        )
+        _q_seq, q_pooled_out, _q_hidden = self.get_representation(
+            q_encoder,
+            question_ids,
+            question_segments,
+            question_attn_mask,
+            self.fix_q_encoder,
+            representation_token_pos=representation_token_pos,
+        )
 
-        ctx_encoder = self.ctx_model  # if encoder_type in ['mixed', 'ctx_only'] else self.q_model
-        _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(ctx_encoder, context_ids, ctx_segments,
-                                                                        ctx_attn_mask, self.fix_ctx_encoder)
+        # ctx_encoder = self.ctx_model
+        ctx_encoder = (
+            self.ctx_model
+            if encoder_type in ["mixed", "ctx_only"]
+            else self.question_model
+        )
+        _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(
+            ctx_encoder, context_ids, ctx_segments, ctx_attn_mask, self.fix_ctx_encoder
+        )
 
         return q_pooled_out, ctx_pooled_out
 
     # TODO delete once moved to the new method
     @classmethod
-    def create_biencoder_input(cls,
-                               samples: List,
-                               tensorizer: Tensorizer,
-                               insert_title: bool,
-                               num_hard_negatives: int = 0,
-                               num_other_negatives: int = 0,
-                               shuffle: bool = True,
-                               shuffle_positives: bool = False,
-                               hard_neg_fallback: bool = True,
-                               ) -> BiEncoderBatch:
+    def create_biencoder_input(
+        cls,
+        samples: List,
+        tensorizer: Tensorizer,
+        insert_title: bool,
+        num_hard_negatives: int = 0,
+        num_other_negatives: int = 0,
+        shuffle: bool = True,
+        shuffle_positives: bool = False,
+        hard_neg_fallback: bool = True,
+    ) -> BiEncoderBatch:
         """
         Creates a batch of the biencoder training tuple.
         :param samples: list of data items (from json) to create the batch for
@@ -131,14 +181,14 @@ class BiEncoder(nn.Module):
             # ctx+ & [ctx-] composition
             # as of now, take the first(gold) ctx+ only
             if shuffle and shuffle_positives:
-                positive_ctxs = sample['positive_ctxs']
+                positive_ctxs = sample["positive_ctxs"]
                 positive_ctx = positive_ctxs[np.random.choice(len(positive_ctxs))]
             else:
-                positive_ctx = sample['positive_ctxs'][0]
+                positive_ctx = sample["positive_ctxs"][0]
 
-            neg_ctxs = sample['negative_ctxs']
-            hard_neg_ctxs = sample['hard_negative_ctxs']
-            question = normalize_question(sample['question'])
+            neg_ctxs = sample["negative_ctxs"]
+            hard_neg_ctxs = sample["hard_negative_ctxs"]
+            question = normalize_question(sample["question"])
 
             if shuffle:
                 random.shuffle(neg_ctxs)
@@ -155,16 +205,25 @@ class BiEncoder(nn.Module):
             hard_negatives_end_idx = 1 + len(hard_neg_ctxs)
 
             current_ctxs_len = len(ctx_tensors)
-            sample_ctxs_tensors = [tensorizer.text_to_tensor(ctx['text'], title=ctx['title'] if (
-                    insert_title and 'title' in ctx) else None)
-                                   for
-                                   ctx in all_ctxs]
+            sample_ctxs_tensors = [
+                tensorizer.text_to_tensor(
+                    ctx["text"],
+                    title=ctx["title"] if (insert_title and "title" in ctx) else None,
+                )
+                for ctx in all_ctxs
+            ]
 
             ctx_tensors.extend(sample_ctxs_tensors)
             positive_ctx_indices.append(current_ctxs_len)
             hard_neg_ctx_indices.append(
-                [i for i in
-                 range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
+                [
+                    i
+                    for i in range(
+                        current_ctxs_len + hard_negatives_start_idx,
+                        current_ctxs_len + hard_negatives_end_idx,
+                    )
+                ]
+            )
 
             question_tensors.append(tensorizer.text_to_tensor(question))
 
@@ -174,21 +233,29 @@ class BiEncoder(nn.Module):
         ctx_segments = torch.zeros_like(ctxs_tensor)
         question_segments = torch.zeros_like(questions_tensor)
 
-        return BiEncoderBatch(questions_tensor, question_segments, ctxs_tensor, ctx_segments, positive_ctx_indices,
-                              hard_neg_ctx_indices, 'question')
+        return BiEncoderBatch(
+            questions_tensor,
+            question_segments,
+            ctxs_tensor,
+            ctx_segments,
+            positive_ctx_indices,
+            hard_neg_ctx_indices,
+            "question",
+        )
 
     @classmethod
-    def create_biencoder_input2(cls,
-                                samples: List[BiEncoderSample],
-                                tensorizer: Tensorizer,
-                                insert_title: bool,
-                                num_hard_negatives: int = 0,
-                                num_other_negatives: int = 0,
-                                shuffle: bool = True,
-                                shuffle_positives: bool = False,
-                                hard_neg_fallback: bool = True,
-                                query_token: str = None
-                                ) -> BiEncoderBatch:
+    def create_biencoder_input2(
+        cls,
+        samples: List[BiEncoderSample],
+        tensorizer: Tensorizer,
+        insert_title: bool,
+        num_hard_negatives: int = 0,
+        num_other_negatives: int = 0,
+        shuffle: bool = True,
+        shuffle_positives: bool = False,
+        hard_neg_fallback: bool = True,
+        query_token: str = None,
+    ) -> BiEncoderBatch:
         """
         Creates a batch of the biencoder training tuple.
         :param samples: list of BiEncoderSample-s to create the batch for
@@ -235,24 +302,36 @@ class BiEncoder(nn.Module):
 
             current_ctxs_len = len(ctx_tensors)
 
-            sample_ctxs_tensors = [tensorizer.text_to_tensor(ctx.text, title=ctx.title if (
-                    insert_title and ctx.title) else None)
-                                   for
-                                   ctx in all_ctxs]
+            sample_ctxs_tensors = [
+                tensorizer.text_to_tensor(
+                    ctx.text, title=ctx.title if (insert_title and ctx.title) else None
+                )
+                for ctx in all_ctxs
+            ]
 
             ctx_tensors.extend(sample_ctxs_tensors)
             positive_ctx_indices.append(current_ctxs_len)
             hard_neg_ctx_indices.append(
-                [i for i in
-                 range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
+                [
+                    i
+                    for i in range(
+                        current_ctxs_len + hard_negatives_start_idx,
+                        current_ctxs_len + hard_negatives_end_idx,
+                    )
+                ]
+            )
 
             if query_token:
                 # TODO: tmp workaround for EL, remove or revise
-                if query_token == '[START_ENT]':
-                    query_span = _select_span_with_token(question, tensorizer, token_str=query_token)
+                if query_token == "[START_ENT]":
+                    query_span = _select_span_with_token(
+                        question, tensorizer, token_str=query_token
+                    )
                     question_tensors.append(query_span)
                 else:
-                    question_tensors.append(tensorizer.text_to_tensor(' '.join([query_token, question])))
+                    question_tensors.append(
+                        tensorizer.text_to_tensor(" ".join([query_token, question]))
+                    )
             else:
                 question_tensors.append(tensorizer.text_to_tensor(question))
 
@@ -262,14 +341,25 @@ class BiEncoder(nn.Module):
         ctx_segments = torch.zeros_like(ctxs_tensor)
         question_segments = torch.zeros_like(questions_tensor)
 
-        return BiEncoderBatch(questions_tensor, question_segments, ctxs_tensor, ctx_segments, positive_ctx_indices,
-                              hard_neg_ctx_indices, 'question')
+        return BiEncoderBatch(
+            questions_tensor,
+            question_segments,
+            ctxs_tensor,
+            ctx_segments,
+            positive_ctx_indices,
+            hard_neg_ctx_indices,
+            "question",
+        )
 
 
 class BiEncoderNllLoss(object):
-
-    def calc(self, q_vectors: T, ctx_vectors: T, positive_idx_per_question: list,
-             hard_negatice_idx_per_question: list = None) -> Tuple[T, int]:
+    def calc(
+        self,
+        q_vectors: T,
+        ctx_vectors: T,
+        positive_idx_per_question: list,
+        hard_negatice_idx_per_question: list = None,
+    ) -> Tuple[T, int]:
         """
         Computes nll loss for the given lists of question and ctx vectors.
         Note that although hard_negatice_idx_per_question in not currently in use, one can use it for the
@@ -284,11 +374,16 @@ class BiEncoderNllLoss(object):
 
         softmax_scores = F.log_softmax(scores, dim=1)
 
-        loss = F.nll_loss(softmax_scores, torch.tensor(positive_idx_per_question).to(softmax_scores.device),
-                          reduction='mean')
+        loss = F.nll_loss(
+            softmax_scores,
+            torch.tensor(positive_idx_per_question).to(softmax_scores.device),
+            reduction="mean",
+        )
 
         max_score, max_idxs = torch.max(softmax_scores, 1)
-        correct_predictions_count = (max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)).sum()
+        correct_predictions_count = (
+            max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)
+        ).sum()
         return loss, correct_predictions_count
 
     @staticmethod
@@ -301,7 +396,9 @@ class BiEncoderNllLoss(object):
         return dot_product_scores
 
 
-def _select_span_with_token(text: str, tensorizer: Tensorizer, token_str: str = '[START_ENT]', ) -> T:
+def _select_span_with_token(
+    text: str, tensorizer: Tensorizer, token_str: str = "[START_ENT]"
+) -> T:
     id = tensorizer.get_token_id(token_str)
     query_tensor = tensorizer.text_to_tensor(text)
 
@@ -316,19 +413,26 @@ def _select_span_with_token(text: str, tensorizer: Tensorizer, token_str: str = 
             rnd_shift = int((rnd.random() - 0.5) * left_shit / 2)
             left_shit += rnd_shift
 
-            query_tensor = query_tensor_full[start_pos - left_shit:]
+            query_tensor = query_tensor_full[start_pos - left_shit :]
             cls_id = tensorizer.tokenizer.cls_token_id
             if query_tensor[0] != cls_id:
                 query_tensor = torch.cat([torch.tensor([cls_id]), query_tensor], dim=0)
 
             from dpr.models.reader import _pad_to_len
-            query_tensor = _pad_to_len(query_tensor, tensorizer.get_pad_id(), tensorizer.max_length)
+
+            query_tensor = _pad_to_len(
+                query_tensor, tensorizer.get_pad_id(), tensorizer.max_length
+            )
             query_tensor[-1] = tensorizer.tokenizer.sep_token_id
             # logger.info('aligned query_tensor %s', query_tensor)
 
-            assert id in query_tensor, 'query_tensor={}'.format(query_tensor)
+            assert id in query_tensor, "query_tensor={}".format(query_tensor)
             return query_tensor
         else:
-            raise RuntimeError('[START_ENT] toke not found for Entity Linking sample query={}'.format(question))
+            raise RuntimeError(
+                "[START_ENT] toke not found for Entity Linking sample query={}".format(
+                    question
+                )
+            )
     else:
         return query_tensor

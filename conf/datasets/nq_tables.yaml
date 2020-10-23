@@ -1,0 +1,62 @@
+datasets:
+  nq_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  nq_train_hn1:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/biencoder/validate_nq_hf_bert_bsz16_lr2e5_wd00_max_grad2/nq-train-dense-results_as_input_with_gold.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  nq_dev:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  # NQ Tables
+  nq_train_tables_short_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.tables.whole.bm25.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: True
+      shuffle_positives: True
+      max_len: 100
+      split_type: type1
+
+  nq_test_tables_short_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: False
+      shuffle_positives: False
+      max_len: 100
+      split_type: type1
+
+  nq_train_tables_long_answers:
+    class: dpr.data.biencoder_data.JsonLTablesQADataset
+    params:
+      data_file_pattern: /checkpoint/vladk/datasets/tables/dpr.nq_train.long_ans.tables.whole.jsonl
+      selector:
+        class: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        params:
+          static_position: 0
+      is_train_set: True
+      shuffle_positives: True
+      max_len: 100
+      split_type: type1
+

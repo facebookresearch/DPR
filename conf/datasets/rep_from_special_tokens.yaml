@@ -1,0 +1,104 @@
+datasets:
+  nq_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+    special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  nq_train_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
+    special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  nq_dev:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+    special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  nq_dev_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
+    special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  trec2020_passages_train:
+    _target_: dpr.data.biencoder_data.TRECDataset
+    data_dir: /checkpoint/vladk/datasets/TREC/
+    passages_filename: collection.tsv
+    queries_filename: queries.train.tsv
+    qrels_filename: qidpidtriples.train.full.2.tsv
+    special_token: '[R]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  aidayago2_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
+    special_token: '[START_ENT]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepSpecificTokenSelector
+      token: '[START_ENT]'
+
+  fever_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-train-multikilt.json
+    special_token: '[F]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  wow_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-train-multikilt.json
+    special_token: '[D]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  trivia_train_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
+    special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  zeroshot_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+        static_position: 0
+
+  zeroshot_dev:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  hotpot_train_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
+    #special_token: '[Q]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0
+
+  trex_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-train-multikilt.json
+    selector:
+      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
+      static_position: 0

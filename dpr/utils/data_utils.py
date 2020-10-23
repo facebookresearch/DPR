@@ -152,18 +152,19 @@ class ShardedDataIterator(object):
         for sample in self.data:
             visitor_func(sample)
 
-    def iterate_ds_data(self, epoch: int = 0) -> Iterator[List]:
+    def get_shard_indices(self, epoch: int):
         indices = list(range(len(self.data)))
-
         if self.shuffle:
             # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
             epoch_rnd = random.Random(self.shuffle_seed + epoch)
             epoch_rnd.shuffle(indices)
+        shard_indices = indices[self.shard_start_idx : self.shard_end_idx]
+        return shard_indices
 
+    def iterate_ds_data(self, epoch: int = 0) -> Iterator[List]:
         # if resuming iteration somewhere in the middle of epoch, one needs to adjust max_iterations
         max_iterations = self.max_iterations - self.iteration
-
-        shard_indices = indices[self.shard_start_idx : self.shard_end_idx]
+        shard_indices = self.get_shard_indices(epoch)
 
         for i in range(
             self.iteration * self.batch_size, len(shard_indices), self.batch_size
@@ -195,18 +196,11 @@ class ShardedDataIterator(object):
     def iterate_ds_sampled_data(
         self, num_iterations: int, epoch: int = 0
     ) -> Iterator[List]:
-        indices = list(range(len(self.data)))
         self.iteration = 0
-        if self.shuffle:
-            # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
-            epoch_rnd = random.Random(self.shuffle_seed + epoch)
-            epoch_rnd.shuffle(indices)
-
-        # if resuming iteration somewhere in the middle of epoch, one needs to adjust max_iterations
-        shard_indices = indices[self.shard_start_idx : self.shard_end_idx]
+        shard_indices = self.get_shard_indices(epoch)
         cycle_it = itertools.cycle(shard_indices)
         for i in range(num_iterations):
-            items_idxs = [next(cycle_it) for j in range(self.batch_size)]
+            items_idxs = [next(cycle_it) for _ in range(self.batch_size)]
             self.iteration += 1
             items = [self.data[idx] for idx in items_idxs]
             yield items
@@ -218,6 +212,9 @@ class ShardedDataIterator(object):
         )
         # TODO: reset the iteration status?
         self.iteration = 0
+
+    def get_dataset(self) -> torch.utils.data.Dataset:
+        return self.data
 
 
 class MultiSetDataIterator(object):
@@ -328,6 +325,9 @@ class MultiSetDataIterator(object):
 
     def get_iteration(self) -> int:
         return self.iteration
+
+    def get_dataset(self, ds_id: int) -> torch.utils.data.Dataset:
+        return self.iterables[ds_id].get_dataset()
 
 
 def normalize_question(question: str) -> str:

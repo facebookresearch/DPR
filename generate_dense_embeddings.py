@@ -112,7 +112,7 @@ def main(args):
         args.encoder_model_type, args, inference_only=True
     )
 
-    encoder = encoder.ctx_model
+    encoder = encoder.ctx_model if args.sub_encoder == "ctx" else encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
         encoder,
@@ -222,10 +222,15 @@ if __name__ == "__main__":
     parser.add_argument("--tables_as_passages", action="store_true")
 
     parser.add_argument(
-        "--special_tokens", type=str, default="['[START_ENT]','[END_ENT]']"
+        "--special_tokens",
+        nargs="+",
+        type=str,
+        default=["[Q]", "[R]", "[F]", "[START_ENT]", "[END_ENT]", "[D]"],
     )
+
     parser.add_argument("--tables_chunk_sz", type=int, default=100)
     parser.add_argument("--tables_split_type", type=str, default="type1")
+    parser.add_argument("--sub_encoder", type=str, default="ctx")
 
     args = parser.parse_args()
 

@@ -540,17 +540,18 @@ class BiEncoderTrainer(object):
         epoch_batches = train_data_iterator.max_iterations
         data_iteration = 0
 
-        special_query_tokens = cfg.special_query_tokens
-        special_token = None
         dataset = 0
         for i, samples_batch in enumerate(
             train_data_iterator.iterate_ds_data(epoch=epoch)
         ):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
-                if special_query_tokens:
-                    special_token = special_query_tokens[dataset]
-                    # logger.info(' special_token %s', special_token)
+
+            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            special_token = ds_cfg.special_token
+            shared_encoder = ds_cfg.shared_encoder
+            shuffle_positives = ds_cfg.shuffle_positives
+            # logger.info(' special_token %s', special_token)
 
             # to be able to resume shuffled ctx- pools
             data_iteration = train_data_iterator.get_iteration()
@@ -562,12 +563,11 @@ class BiEncoderTrainer(object):
                 num_hard_negatives,
                 num_other_negatives,
                 shuffle=True,
-                shuffle_positives=cfg.shuffle_positive_ctx,
+                shuffle_positives=shuffle_positives,
                 query_token=special_token,
             )
 
             # get the token to be used for representation selection
-            ds_cfg = self.ds_cfg.train_datasets[dataset]
             rep_positions = ds_cfg.selector.get_positions(
                 biencoder_batch.question_ids, self.tensorizer
             )
@@ -577,7 +577,7 @@ class BiEncoderTrainer(object):
                 biencoder_batch,
                 self.tensorizer,
                 cfg,
-                encoder_type="mixed",
+                encoder_type="q_only" if shared_encoder else "mixed",
                 rep_positions=rep_positions,
             )
 
@@ -671,8 +671,12 @@ class BiEncoderTrainer(object):
             epoch += 1
         logger.info("Loading checkpoint @ batch=%s and epoch=%s", offset, epoch)
 
-        self.start_epoch = epoch
-        self.start_batch = offset
+        if self.cfg.ignore_checkpoint_ofsset:
+            self.start_epoch = 0
+            self.start_batch = 0
+        else:
+            self.start_epoch = epoch
+            self.start_batch = offset
 
         model_to_load = get_model_obj(self.biencoder)
         logger.info("Loading saved model state ...")
@@ -680,12 +684,13 @@ class BiEncoderTrainer(object):
             saved_state.model_dict
         )  # TODO: set strict=False if you use extra projection
 
-        if saved_state.optimizer_dict:
-            logger.info("Loading saved optimizer state ...")
-            self.optimizer.load_state_dict(saved_state.optimizer_dict)
+        if not self.cfg.ignore_checkpoint_optimizer:
+            if saved_state.optimizer_dict:
+                logger.info("Loading saved optimizer state ...")
+                self.optimizer.load_state_dict(saved_state.optimizer_dict)
 
-        if saved_state.scheduler_dict:
-            self.scheduler_state = saved_state.scheduler_dict
+            if saved_state.scheduler_dict:
+                self.scheduler_state = saved_state.scheduler_dict
 
 
 def _calc_loss(
@@ -772,12 +777,12 @@ def _do_biencoder_fwd_pass(
     model: nn.Module,
     input: BiEncoderBatch,
     tensorizer: Tensorizer,
-    args,
+    cfg,
     encoder_type: str,
     rep_positions=0,
 ) -> Tuple[torch.Tensor, int]:
     # logger.info('encoder_type %s', encoder_type)
-    input = BiEncoderBatch(**move_to_device(input._asdict(), args.device))
+    input = BiEncoderBatch(**move_to_device(input._asdict(), cfg.device))
 
     q_attn_mask = tensorizer.get_attn_mask(input.question_ids)
     ctx_attn_mask = tensorizer.get_attn_mask(input.context_ids)
@@ -810,7 +815,7 @@ def _do_biencoder_fwd_pass(
     loss_function = BiEncoderNllLoss()
 
     loss, is_correct = _calc_loss(
-        args,
+        cfg,
         loss_function,
         local_q_vector,
         local_ctx_vectors,
@@ -820,10 +825,10 @@ def _do_biencoder_fwd_pass(
 
     is_correct = is_correct.sum().item()
 
-    if args.n_gpu > 1:
+    if cfg.n_gpu > 1:
         loss = loss.mean()
-    if args.train.gradient_accumulation_steps > 1:
-        loss = loss / args.gradient_accumulation_steps
+    if cfg.train.gradient_accumulation_steps > 1:
+        loss = loss / cfg.gradient_accumulation_steps
     return loss, is_correct
 
 
@@ -920,7 +925,7 @@ def main(cfg: DictConfig):
     if cfg.train.gradient_accumulation_steps < 1:
         raise ValueError(
             "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
-                args.gradient_accumulation_steps
+                cfg.train.gradient_accumulation_steps
             )
         )
 

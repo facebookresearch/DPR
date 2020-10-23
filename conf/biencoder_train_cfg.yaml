@@ -1,13 +1,12 @@
 defaults:
   - encoder: hf_bert
   - train: biencoder_default
-  - datasets: rep_from_cls_tokens
+  - datasets: rep_from_cls
 
 train_datasets:
 dev_datasets:
 output_dir:
 train_sampling_rates:
-
 
 do_lower_case: True
 fix_ctx_encoder: False
@@ -16,12 +15,9 @@ seed: 12345
 checkpoint_file_name: dpr_biencoder
 model_file:
 
-shuffle_positive_ctx: False
-
-
 # TODO: move to a sub conf
 local_rank: -1
-global_loss_buf_sz: 150000
+global_loss_buf_sz: 592000
 device:
 distributed_world_size:
 no_cuda: False
@@ -38,4 +34,5 @@ special_tokens:
   - '[END_ENT]'
   - '[D]'
 
-special_query_tokens: []
+ignore_checkpoint_ofsset: False
+ignore_checkpoint_optimizer: False

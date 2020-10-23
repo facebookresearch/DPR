@@ -27,7 +27,7 @@ from torch import Tensor as T
 from torch import nn
 
 from distributed_faiss.client import IndexClient
-from dpr.data.biencoder_data import split_tables_to_chunks
+from dpr.data.biencoder_data import split_tables_to_chunks, RepTokenSelector
 from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches
 from dpr.data.retriever_data import TableChunk, KiltCsvCtxSrc, KiltCsvQASrc
 from dpr.data.tables import read_nq_tables_jsonl
@@ -54,6 +54,72 @@ console = logging.StreamHandler()
 logger.addHandler(console)
 
 
+def generate_question_vectors(
+    question_encoder: torch.nn.Module,
+    tensorizer: Tensorizer,
+    questions: List[str],
+    bsz: int,
+    query_token: str = None,
+    selector: RepTokenSelector = None,
+) -> T:
+    n = len(questions)
+    query_vectors = []
+
+    with torch.no_grad():
+        for j, batch_start in enumerate(range(0, n, bsz)):
+            batch_questions = questions[batch_start : batch_start + bsz]
+
+            if query_token:
+                # TODO: tmp workaround for EL, remove or revise
+                if query_token == "[START_ENT]":
+                    batch_token_tensors = [
+                        _select_span_with_token(q, tensorizer, token_str=query_token)
+                        for q in batch_questions
+                    ]
+                else:
+                    batch_token_tensors = [
+                        tensorizer.text_to_tensor(" ".join([query_token, q]))
+                        for q in batch_questions
+                    ]
+            else:
+                batch_token_tensors = [
+                    tensorizer.text_to_tensor(q) for q in batch_questions
+                ]
+
+            q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
+            q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
+            q_attn_mask = tensorizer.get_attn_mask(q_ids_batch)
+
+            if selector:
+                rep_positions = self.selector.get_positions(
+                    q_ids_batch, self.tensorizer
+                )
+
+                if j == 0:
+                    logger.info("!!! using selector for token %s", self.selector.token)
+                logger.info("!!! rep positions %s", rep_positions)
+
+                _, out, _ = BiEncoder.get_representation(
+                    question_encoder,
+                    q_ids_batch,
+                    q_seg_batch,
+                    q_attn_mask,
+                    representation_token_pos=rep_positions,
+                )
+            else:
+                _, out, _ = question_encoder(q_ids_batch, q_seg_batch, q_attn_mask)
+
+            query_vectors.extend(out.cpu().split(1, dim=0))
+
+            if len(query_vectors) % 100 == 0:
+                logger.info("Encoded queries %d", len(query_vectors))
+
+    query_tensor = torch.cat(query_vectors, dim=0)
+    logger.info("Total encoded queries tensor %s", query_tensor.size())
+    assert query_tensor.size(0) == len(questions)
+    return query_tensor
+
+
 class DenseRetriever(object):
     def __init__(
         self, question_encoder: nn.Module, batch_size: int, tensorizer: Tensorizer
@@ -66,71 +132,17 @@ class DenseRetriever(object):
     def generate_question_vectors(
         self, questions: List[str], query_token: str = None
     ) -> T:
-        n = len(questions)
+
         bsz = self.batch_size
-        query_vectors = []
-
         self.question_encoder.eval()
-
-        with torch.no_grad():
-            for j, batch_start in enumerate(range(0, n, bsz)):
-                batch_questions = questions[batch_start : batch_start + bsz]
-
-                if query_token:
-                    # TODO: tmp workaround for EL, remove or revise
-                    if query_token == "[START_ENT]":
-                        batch_token_tensors = [
-                            _select_span_with_token(
-                                q, self.tensorizer, token_str=query_token
-                            )
-                            for q in batch_questions
-                        ]
-                    else:
-                        batch_token_tensors = [
-                            self.tensorizer.text_to_tensor(" ".join([query_token, q]))
-                            for q in batch_questions
-                        ]
-                else:
-                    batch_token_tensors = [
-                        self.tensorizer.text_to_tensor(q) for q in batch_questions
-                    ]
-
-                q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
-                q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
-                q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
-
-                if self.selector:
-                    rep_positions = self.selector.get_positions(
-                        q_ids_batch, self.tensorizer
-                    )
-
-                    if j == 0:
-                        logger.info(
-                            "!!! using selector for token %s", self.selector.token
-                        )
-                    logger.info("!!! rep positions %s", rep_positions)
-
-                    _, out, _ = BiEncoder.get_representation(
-                        self.question_encoder,
-                        q_ids_batch,
-                        q_seg_batch,
-                        q_attn_mask,
-                        representation_token_pos=rep_positions,
-                    )
-                else:
-                    _, out, _ = self.question_encoder(
-                        q_ids_batch, q_seg_batch, q_attn_mask
-                    )
-
-                query_vectors.extend(out.cpu().split(1, dim=0))
-
-                if len(query_vectors) % 100 == 0:
-                    logger.info("Encoded queries %d", len(query_vectors))
-
-        query_tensor = torch.cat(query_vectors, dim=0)
-        logger.info("Total encoded queries tensor %s", query_tensor.size())
-        assert query_tensor.size(0) == len(questions)
-        return query_tensor
+        return generate_question_vectors(
+            self.question_encoder,
+            self.tensorizer,
+            questions,
+            bsz,
+            query_token=query_token,
+            selector=self.selector,
+        )
 
 
 class LocalFaissRetriever(DenseRetriever):
@@ -454,13 +466,12 @@ def main(cfg: DictConfig):
             encoder, cfg.batch_size, tensorizer, cfg.rpc_retriever_cfg_file
         )
     else:  # local index retriever
-        index_buffer_sz = cfg.index_buffer
-        if cfg.hnsw_index:
-            index = DenseHNSWFlatIndexer(vector_size)
-            index_buffer_sz = -1  # encode all at once
-        else:
-            index = DenseFlatIndexer(vector_size)
+        index = hydra.utils.instantiate(cfg.indexers[cfg.indexer])
+        logger.info("Index class %s ", type(index))
+        index_buffer_sz = index.buffer_size
+        index.init_index(vector_size)
         retriever = LocalFaissRetriever(encoder, cfg.batch_size, tensorizer, index)
+
     logger.info("Using special token %s", qa_src.special_query_token)
     questions_tensor = retriever.generate_question_vectors(
         questions, query_token=qa_src.special_query_token
@@ -470,21 +481,14 @@ def main(cfg: DictConfig):
         logger.info("Using custom representation token selector")
         retriever.selector = qa_src.selector
 
-    all_passages = {}
     id_prefixes = []
     ctx_sources = []
     for ctx_src in cfg.ctx_datatsets:
         ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
-        ctx_src.load_data_to(all_passages)
         id_prefixes.append(ctx_src.id_prefix)
         ctx_sources.append(ctx_src)
 
     logger.info("id_prefixes per dataset: %s", id_prefixes)
-
-    if len(all_passages) == 0:
-        raise RuntimeError(
-            "No passages data found. Please specify ctx_file param properly."
-        )
 
     # index all passages
     ctx_files_patterns = cfg.encoded_ctx_files
@@ -502,7 +506,8 @@ def main(cfg: DictConfig):
     logger.info("Embeddings files id prefixes: %s", path_id_prefixes)
 
     index_path = "_".join(input_paths[0].split("_")[:-1])
-    if cfg.save_or_load_index and os.path.exists(index_path):
+    logger.info("Index path: %s", index_path)
+    if cfg.save_or_load_index and index.index_exists(index_path):
         retriever.index.deserialize(index_path)
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
@@ -514,6 +519,21 @@ def main(cfg: DictConfig):
 
     # get top k results
     top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), cfg.n_docs)
+
+    # to reduce memory footprint, we no longer need the index
+    retriever = None
+    import gc
+
+    gc.collect()
+
+    all_passages = {}
+    for ctx_src in ctx_sources:
+        ctx_src.load_data_to(all_passages)
+
+    if len(all_passages) == 0:
+        raise RuntimeError(
+            "No passages data found. Please specify ctx_file param properly."
+        )
 
     if cfg.validate_as_tables:
         questions_doc_hits = validate_tables(
