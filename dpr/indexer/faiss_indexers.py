@@ -32,6 +32,9 @@ class DenseIndexer(object):
     def index_data(self, data: List[Tuple[object, np.array]]):
         raise NotImplementedError
 
+    def get_index_name(self):
+        raise NotImplementedError
+
     def search_knn(
         self, query_vectors: np.array, top_docs: int
     ) -> List[Tuple[List[object], List[float]]]:
@@ -56,8 +59,8 @@ class DenseIndexer(object):
             index_file = os.path.join(path, "index.dpr")
             meta_file = os.path.join(path, "index_meta.dpr")
         else:
-            index_file = path + ".index.dpr"
-            meta_file = path + ".index_meta.dpr"
+            index_file = path + ".{}.dpr".format(self.get_index_name())
+            meta_file = path + ".{}_meta.dpr".format(self.get_index_name())
         return index_file, meta_file
 
     def index_exists(self, path: str):
@@ -116,6 +119,9 @@ class DenseFlatIndexer(DenseIndexer):
         ]
         result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
         return result
+
+    def get_index_name(self):
+        return "flat_index"
 
 
 class DenseHNSWFlatIndexer(DenseIndexer):
@@ -207,6 +213,9 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         # to trigger warning on subsequent indexing
         self.phi = 1
 
+    def get_index_name(self):
+        return "hnsw_index"
+
 
 class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
     """
@@ -239,3 +248,6 @@ class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
 
     def train(self, vectors: np.array):
         self.index.train(vectors)
+
+    def get_index_name(self):
+        return "hnswsq_index"
