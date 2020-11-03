@@ -1,0 +1,6 @@
+ctx_sources:
+  kilt_wiki:
+    _target_: dpr.data.retriever_data.KiltCsvCtxSrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
+    normalize: True
+

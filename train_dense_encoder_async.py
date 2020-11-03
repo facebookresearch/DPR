@@ -560,7 +560,6 @@ class BiEncoderTrainer(object):
 
         index_ratio = cfg.index_ratio
         rnd = random.Random(shuffle_seed)
-        logger.info("_index_passages")
         torch.distributed.barrier()
 
         passages = self.all_passages[self.passages_start_idx : self.passages_end_idx]
@@ -615,7 +614,6 @@ class BiEncoderTrainer(object):
             logger.info("Embeddings sent.")
             self.index_client.sync_train(index_id)
             logger.info("Remote index train completed")
-
         else:
             it = self._generate_embs_from_passages_it(shuffle_seed, passages)
             for i, index_batch in enumerate(it):
@@ -647,49 +645,52 @@ class BiEncoderTrainer(object):
     def _search_new_hard_negs(self) -> Dict[str, List[BiEncoderPassage]]:
         cfg = self.cfg
         self.biencoder.eval()
-        # TODO; generalize for multi-set
-        ds = self.train_iterator.get_dataset(0)
-        # requesting ALL data queries as of now
-        queries, answers = ds.get_qas()
-        index_bsz = 512  # cfg.index_batch_size
-        n = len(queries)
+
+        datasets = self.train_iterator.get_datasets()
+        query_to_hn_dict = {}
         model = get_model_obj(self.biencoder)
         q_encoder = model.question_model
         search_topk_k = cfg.index_search_topk_k
         async_max_hn = cfg.async_max_hn
 
-        query_to_hn_dict = {}
         # to check the answer presence only
         tokenizer = SimpleTokenizer(**{})
 
-        for i in range(0, n, index_bsz):
-            query_batch = queries[i : i + index_bsz]
-            query_batch_embs = generate_question_vectors(
-                q_encoder, self.tensorizer, query_batch, cfg.train.dev_batch_size
-            )
-            time0 = time.time()
-            results = self.index_client.search(
-                query_batch_embs.numpy(), search_topk_k, self.index_id
-            )
-            logger.info("index search time: %f sec.", time.time() - time0)
-            _scores, psg_ids = results
+        for ds in datasets:
 
-            for q_id, q in enumerate(query_batch):
-                query_result_ids = psg_ids[q_id]
-                new_hard_neg_passages = []
-                q_answers = answers[q_id]
-                for psg_id in query_result_ids:
-                    # passage format: doc_id, doc_text, title
-                    passage = self.all_passages[psg_id]
-                    # check if passage has answer or not
-                    if not has_answer(q_answers, passage[1], tokenizer, "string"):
-                        new_hard_neg_passages.append(
-                            BiEncoderPassage(passage[1], passage[2])
-                        )
+            # requesting ALL data queries as of now
+            queries, answers = ds.get_qas()
+            index_bsz = 512  # cfg.index_batch_size
+            n = len(queries)
 
-                    if len(new_hard_neg_passages) > async_max_hn:
-                        break
-                query_to_hn_dict[q] = new_hard_neg_passages
+            for i in range(0, n, index_bsz):
+                query_batch = queries[i : i + index_bsz]
+                query_batch_embs = generate_question_vectors(
+                    q_encoder, self.tensorizer, query_batch, cfg.train.dev_batch_size
+                )
+                time0 = time.time()
+                results = self.index_client.search(
+                    query_batch_embs.numpy(), search_topk_k, self.index_id
+                )
+                logger.info("index search time: %f sec.", time.time() - time0)
+                _scores, psg_ids = results
+
+                for q_id, q in enumerate(query_batch):
+                    query_result_ids = psg_ids[q_id]
+                    new_hard_neg_passages = []
+                    q_answers = answers[q_id]
+                    for psg_id in query_result_ids:
+                        # passage format: doc_id, doc_text, title
+                        passage = self.all_passages[psg_id]
+                        # check if passage has answer or not
+                        if not has_answer(q_answers, passage[1], tokenizer, "string"):
+                            new_hard_neg_passages.append(
+                                BiEncoderPassage(passage[1], passage[2])
+                            )
+
+                        if len(new_hard_neg_passages) > async_max_hn:
+                            break
+                    query_to_hn_dict[q] = new_hard_neg_passages
         return query_to_hn_dict
 
     def _train_epoch(self, scheduler, epoch: int, eval_step: int):
@@ -726,7 +727,7 @@ class BiEncoderTrainer(object):
                 epoch_batches,
             )
             self.index_client.drop_index(self.index_id)
-            self._build_index(cfg.seed, load_index=epoch == 0)
+            self._build_index(cfg.seed, load_index=False)  # =epoch == 0
             self._wait_index_ready()
             self.index_client.save_index(self.index_id)
             self.new_hn_dict = self._search_new_hard_negs()

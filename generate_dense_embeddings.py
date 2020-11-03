@@ -21,7 +21,7 @@ import torch
 from torch import nn
 from typing import List, Tuple
 
-from dpr.data.biencoder_data import split_tables_to_chunks
+from dpr.data.biencoder_data import split_tables_to_chunks, normalize_kilt_passage
 from dpr.data.tables import read_nq_tables_jsonl
 from dpr.models import init_biencoder_components
 from dpr.options import (
@@ -60,9 +60,13 @@ def gen_ctx_vectors(
     results = []
     for j, batch_start in enumerate(range(0, n, bsz)):
 
+        batch = ctx_rows[batch_start : batch_start + bsz]
+        if args.norm_passage:
+            batch = [(ctx[0], normalize_kilt_passage(ctx[1]), ctx[2]) for ctx in batch]
+
         batch_token_tensors = [
             tensorizer.text_to_tensor(ctx[1], title=ctx[2] if insert_title else None)
-            for ctx in ctx_rows[batch_start : batch_start + bsz]
+            for ctx in batch
         ]
 
         ctx_ids_batch = move_to_device(
@@ -76,13 +80,12 @@ def gen_ctx_vectors(
             _, out, _ = model(ctx_ids_batch, ctx_seg_batch, ctx_attn_mask)
         out = out.cpu()
 
-        ctx_ids = [r[0] for r in ctx_rows[batch_start : batch_start + bsz]]
+        ctx_ids = [r[0] for r in batch]
         extra_info = []
-        if len(ctx_rows[0]) > 3:
-            extra_info = [r[3:] for r in ctx_rows[batch_start : batch_start + bsz]]
+        if len(batch[0]) > 3:
+            extra_info = [r[3:] for r in batch]
 
         assert len(ctx_ids) == out.size(0)
-
         total += len(ctx_ids)
 
         # TODO: refactor to avoid 'if'
@@ -231,6 +234,7 @@ if __name__ == "__main__":
     parser.add_argument("--tables_chunk_sz", type=int, default=100)
     parser.add_argument("--tables_split_type", type=str, default="type1")
     parser.add_argument("--sub_encoder", type=str, default="ctx")
+    parser.add_argument("--norm_passage", action="store_true")
 
     args = parser.parse_args()
 

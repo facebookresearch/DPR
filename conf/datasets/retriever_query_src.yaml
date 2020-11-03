@@ -15,10 +15,19 @@ datasets:
     _target_: dpr.data.retriever_data.JsonlQASrc
     file: /checkpoint/vladk/datasets/tables/dpr.nq_test.tables.whole.bm25.jsonl
 
+  nq_new_dev:
+    _target_: dpr.data.retriever_data.JsonlQASrc
+    file: /private/home/vladk/src/natural-questions/nq_open/NQ-open.efficientqa.dev.1.1.jsonl
+    answers_attr: answer
+
   nq_test_kilt:
     _target_: dpr.data.retriever_data.KiltCsvQASrc
     file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-multikilt.tsv
     kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
+
+  trivia_test:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/triviaqa-test.qa.csv
 
   trivia_test_kilt:
     _target_: dpr.data.retriever_data.KiltCsvQASrc
@@ -64,3 +73,6 @@ datasets:
       class: dpr.data.biencoder_data.RepSpecificTokenSelector
       params:
         token: '[START_ENT]'
+
+  toy_test:
+    _target_: dpr.data.retriever_data.ToyQASrc

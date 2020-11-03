@@ -3,37 +3,22 @@ datasets:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
     shared_encoder: false
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   nq_train_hn1:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/vladk/biencoder/validate_nq_hf_bert_bsz16_lr2e5_wd00_max_grad2/nq-train-dense-results_as_input_with_gold.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   nq_train_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   nq_dev:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   nq_dev_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   trec2020_passages_train:
     _target_: dpr.data.biencoder_data.TRECDataset
@@ -41,11 +26,16 @@ datasets:
     passages_filename: collection.tsv
     queries_filename: queries.train.tsv
     qrels_filename: qidpidtriples.train.full.2.tsv
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   aidayago2_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-multikilt.json
+    special_token: '[START_ENT]'
+    selector:
+      _target_: dpr.data.biencoder_data.RepSpecificTokenSelector
+      token: '[START_ENT]'
+
+  aidayago2_dev:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
     special_token: '[START_ENT]'
@@ -56,48 +46,57 @@ datasets:
   fever_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
+
+  fever_dev:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-multikilt.json
 
   wow_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
+
+  trivia_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/triviaqa-train.json
+    shared_encoder: false
+
+  trivia_dev:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/vladk/dpr_open_source/triviaqa-dev.json
+    shared_encoder: false
 
   trivia_train_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
+
+  trivia_dev_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.json
 
   zeroshot_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   zeroshot_dev:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
 
   hotpot_train_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
+
+  hotpot_dev_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.json
 
   trex_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-train-multikilt.json
-    selector:
-      _target_: dpr.data.biencoder_data.RepStaticPosTokenSelector
-      static_position: 0
+
+  curated_trec_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /private/home/scottyih/share/qa_encoder_training/curatedtrec-train.no_empty_positive.json
+
+  webquestions_train:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /private/home/scottyih/share/qa_encoder_training/webquestions-train.no_empty_positive.json

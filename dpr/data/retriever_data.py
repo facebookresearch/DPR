@@ -1,13 +1,18 @@
 import collections
 import csv
-import hydra
 import json
-import jsonlines
 import logging
-
-from omegaconf import DictConfig
 from typing import Dict
-from dpr.data.biencoder_data import BiEncoderPassage, split_tables_to_chunks
+
+import hydra
+import jsonlines
+from omegaconf import DictConfig
+
+from dpr.data.biencoder_data import (
+    BiEncoderPassage,
+    split_tables_to_chunks,
+    normalize_kilt_passage,
+)
 from dpr.data.tables import read_nq_tables_jsonl
 
 logger = logging.getLogger(__name__)
@@ -55,6 +60,31 @@ class CsvQASrc(QASrc):
                 if self.id_col >= 0:
                     id = row[self.id_col]
                 data.append(QASample(question, id, answers))
+
+        self.data = data
+
+
+# TMP
+class ToyQASrc(QASrc):
+    def __init__(
+        self,
+        selector: DictConfig = None,
+        special_query_token: str = None,
+    ):
+        super().__init__(selector=selector, special_query_token=special_query_token)
+
+    def load_data(self):
+        data = [
+            "barack obama was born in kenya",
+            "barack obama was born in",
+            "where was barack obama born in",
+            "where barack obama born",
+            "where was barack obama born",
+            "where barack obama born",
+            "barack obama born",
+            "barack obama [SEP] born in",
+        ]
+        data = [QASample(q, None, []) for q in data]
 
         self.data = data
 
@@ -117,12 +147,14 @@ class CsvCtxSrc(object):
         text_col: int = 1,
         title_col: int = 2,
         id_prefix: str = None,
+        normalize: bool = False,
     ):
         self.text_col = text_col
         self.title_col = title_col
         self.id_col = id_col
         self.file = file
         self.id_prefix = id_prefix
+        self.normalize = normalize
 
     def load_data_to(self, ctxs: Dict):
         ctxs_dict = {}
@@ -134,8 +166,11 @@ class CsvCtxSrc(object):
                         sample_id = self.id_prefix + str(row[self.id_col])
                     else:
                         sample_id = row[self.id_col]
+                    passage = row[self.text_col]
+                    if self.normalize:
+                        passage = normalize_kilt_passage(passage)
                     ctxs_dict[sample_id] = BiEncoderPassage(
-                        row[self.text_col], row[self.title_col]
+                        passage, row[self.title_col]
                     )
 
         ctxs.update(ctxs_dict)
@@ -149,8 +184,11 @@ class KiltCsvCtxSrc(CsvCtxSrc):
         text_col: int = 1,
         title_col: int = 2,
         id_prefix: str = None,
+        normalize: bool = False,
     ):
-        super().__init__(file, id_col, text_col, title_col, id_prefix)
+        super().__init__(
+            file, id_col, text_col, title_col, id_prefix, normalize=normalize
+        )
 
     def convert_to_kilt(self, kilt_gold_file, dpr_output, kilt_out_file):
         logger.info("Converting to KILT format file: %s", dpr_output)

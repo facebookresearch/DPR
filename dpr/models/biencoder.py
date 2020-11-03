@@ -60,8 +60,7 @@ def cosine_scores(q_vector: T, ctx_vectors: T):
 
 
 class BiEncoder(nn.Module):
-    """ Bi-Encoder model component. Encapsulates query/question and context/passage encoders.
-    """
+    """Bi-Encoder model component. Encapsulates query/question and context/passage encoders."""
 
     def __init__(
         self,
@@ -188,7 +187,7 @@ class BiEncoder(nn.Module):
 
             neg_ctxs = sample["negative_ctxs"]
             hard_neg_ctxs = sample["hard_negative_ctxs"]
-            question = normalize_question(sample["question"])
+            # question = normalize_question(sample["question"])
 
             if shuffle:
                 random.shuffle(neg_ctxs)
@@ -284,7 +283,8 @@ class BiEncoder(nn.Module):
 
             neg_ctxs = sample.negative_passages
             hard_neg_ctxs = sample.hard_negative_passages
-            question = normalize_question(sample.query)
+            question = sample.query
+            # question = normalize_question(sample.query)
 
             if shuffle:
                 random.shuffle(neg_ctxs)

@@ -1,8 +1,3 @@
-defaults:
-  - encoder: hf_bert
-  - datasets: retriever_query_src
-  - ctx_sources: default_sources
-
 ctx_sources:
   dpr_wiki:
     _target_: dpr.data.retriever_data.CsvCtxSrc
@@ -41,53 +36,3 @@ ctx_sources:
     file: /private/home/barlaso/data/wikipedia/wiki.infoboxes.20181220.dump.jsonl
     tables_chunk_sz: 100
     id_prefix: 'wib:'
-
-indexers:
-  flat:
-    _target_: dpr.indexer.faiss_indexers.DenseFlatIndexer
-
-  hnsw:
-    _target_: dpr.indexer.faiss_indexers.DenseHNSWFlatIndexer
-
-  hnsw_sq:
-    _target_: dpr.indexer.faiss_indexers.DenseHNSWSQIndexer
-
-
-qa_dataset:
-ctx_datatsets:
-
-#Glob paths to encoded passages (from generate_dense_embeddings tool)
-encoded_ctx_files: []
-
-out_file:
-# "regex" or "string"
-match: string
-n_docs: 100
-validation_workers: 16
-batch_size: 128
-do_lower_case: True
-save_or_load_index: False
-kilt_out_file:
-model_file:
-validate_as_tables: False
-rpc_retriever_cfg_file:
-indexer: flat
-
-special_tokens:
-  - '[Q]'
-  - '[R]'
-  - '[F]'
-  - '[START_ENT]'
-  - '[END_ENT]'
-  - '[D]'
-
-# TODO: move to a sub conf
-local_rank: -1
-global_loss_buf_sz: 150000
-device:
-distributed_world_size:
-no_cuda: False
-n_gpu:
-fp16: False
-fp16_opt_level: O1
-

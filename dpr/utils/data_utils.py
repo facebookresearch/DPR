@@ -329,6 +329,9 @@ class MultiSetDataIterator(object):
     def get_dataset(self, ds_id: int) -> torch.utils.data.Dataset:
         return self.iterables[ds_id].get_dataset()
 
+    def get_datasets(self) -> List[torch.utils.data.Dataset]:
+        return [it.get_dataset() for it in self.iterables]
+
 
 def normalize_question(question: str) -> str:
     if question[-1] == "?":

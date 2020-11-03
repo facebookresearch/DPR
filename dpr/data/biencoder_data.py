@@ -74,32 +74,45 @@ class RepSpecificTokenSelector(RepTokenSelector):
         return token_indexes_result
 
 
+DEFAULT_SELECTOR = RepStaticPosTokenSelector()
+
+
 class Dataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        selector: DictConfig,
+        selector: DictConfig = None,
         special_token: str = None,
         shared_encoder: bool = False,
         shuffle_positives: bool = False,
+        query_special_suffix: str = None,
     ):
-        # TODO: move to conf_utils
-        self.selector = hydra.utils.instantiate(selector)
+        if selector:
+            self.selector = hydra.utils.instantiate(selector)
+        else:
+            self.selector = DEFAULT_SELECTOR
         self.special_token = special_token
         self.shared_encoder = shared_encoder
         self.shuffle_positives = shuffle_positives
+        self.query_special_suffix = query_special_suffix
 
     def __getitem__(self, index) -> BiEncoderSample:
         raise NotImplementedError
+
+    def _process_query(self, query: str):
+        if self.query_special_suffix and not query.endswith(self.query_special_suffix):
+            query += self.query_special_suffix
+        return query
 
 
 class JsonQADataset(Dataset):
     def __init__(
         self,
         data_file_pattern: str,
-        selector: DictConfig,
+        selector: DictConfig = {},
         special_token: str = None,
         shared_encoder: bool = False,
         shuffle_positives: bool = False,
+        normalize: bool = False,
     ):
         super().__init__(
             selector,
@@ -109,6 +122,7 @@ class JsonQADataset(Dataset):
         )
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
+        self.normalize = normalize
 
     def load_data(self):
         data = read_data_from_json_files(self.data_files)
@@ -119,7 +133,7 @@ class JsonQADataset(Dataset):
     def __getitem__(self, index) -> BiEncoderSample:
         json_sample = self.data[index]
         r = BiEncoderSample()
-        r.query = json_sample["question"]
+        r.query = self._process_query(json_sample["question"])
         r.positive_passages = [
             BiEncoderPassage(ctx["text"], ctx["title"])
             for ctx in json_sample["positive_ctxs"]
@@ -132,10 +146,28 @@ class JsonQADataset(Dataset):
             if "negative_ctxs" in json_sample
             else []
         )
-        r.hard_negative_passages = [
-            BiEncoderPassage(ctx["text"], ctx["title"])
-            for ctx in json_sample["hard_negative_ctxs"]
-        ]
+        if "hard_negative_ctxs" in json_sample:
+            r.hard_negative_passages = [
+                BiEncoderPassage(ctx["text"], ctx["title"])
+                for ctx in json_sample["hard_negative_ctxs"]
+            ]
+        else:
+            r.hard_negative_passages = []
+
+        # tmp experiment
+        if self.normalize:
+            r.positive_passages = [
+                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
+                for p in r.positive_passages
+            ]
+            r.negative_passages = [
+                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
+                for p in r.negative_passages
+            ]
+            r.hard_negative_passages = [
+                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
+                for p in r.hard_negative_passages
+            ]
         return r
 
     def __len__(self):
@@ -488,7 +520,7 @@ class TRECDataset(Dataset):
     def __getitem__(self, index) -> BiEncoderSample:
         qrel = self.qrels[index]
         r = BiEncoderSample()
-        r.query = self.queries[qrel[0]]
+        r.query = self._process_query(self.queries[qrel[0]])
         r.positive_passages = [
             BiEncoderPassage(self.passages_dict[pid], None) for pid in qrel[1]
         ]
@@ -564,3 +596,8 @@ def split_tables_to_chunks(
         if i % 1000 == 0:
             logger.info("Splitted %d tables to %d chunks", i, len(chunks))
     return chunks
+
+
+def normalize_kilt_passage(ctx_text: str):
+    ctx_text = ctx_text.replace("\n", " ")
+    return ctx_text

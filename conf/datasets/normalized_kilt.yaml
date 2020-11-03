@@ -1,0 +1,11 @@
+datasets:
+  nq_train_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
+    normalize: True
+    shuffle_positives: False
+
+  nq_dev_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
+    normalize: True

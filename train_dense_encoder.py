@@ -333,7 +333,7 @@ class BiEncoderTrainer(object):
                 shuffle=False,
             )
             # get the token to be used for representation selection
-            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            ds_cfg = self.ds_cfg.dev_datasets[dataset]
             rep_positions = ds_cfg.selector.get_positions(
                 biencoder_input.question_ids, self.tensorizer
             )
@@ -425,7 +425,7 @@ class BiEncoderTrainer(object):
             bsz = ctxs_ids.size(0)
 
             # get the token to be used for representation selection
-            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            ds_cfg = self.ds_cfg.dev_datasets[dataset]
             rep_positions = ds_cfg.selector.get_positions(
                 biencoder_input.question_ids, self.tensorizer
             )

@@ -460,6 +460,7 @@ def main(cfg: DictConfig):
         questions.append(question)
         question_answers.append(answers)
 
+    index = None
     if cfg.rpc_retriever_cfg_file:
         index_buffer_sz = 1000
         retriever = DenseRPCRetriever(
@@ -507,7 +508,7 @@ def main(cfg: DictConfig):
 
     index_path = "_".join(input_paths[0].split("_")[:-1])
     logger.info("Index path: %s", index_path)
-    if cfg.save_or_load_index and index.index_exists(index_path):
+    if cfg.save_or_load_index and index and index.index_exists(index_path):
         retriever.index.deserialize(index_path)
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
