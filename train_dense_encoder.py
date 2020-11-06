@@ -572,6 +572,9 @@ class BiEncoderTrainer(object):
                 biencoder_batch.question_ids, self.tensorizer
             )
 
+            loss_scale = (
+                cfg.loss_scale_factors[dataset] if cfg.loss_scale_factors else None
+            )
             loss, correct_cnt = _do_biencoder_fwd_pass(
                 self.biencoder,
                 biencoder_batch,
@@ -579,6 +582,7 @@ class BiEncoderTrainer(object):
                 cfg,
                 encoder_type="q_only" if shared_encoder else "mixed",
                 rep_positions=rep_positions,
+                loss_scale=loss_scale,
             )
 
             epoch_correct_predictions += correct_cnt
@@ -700,6 +704,7 @@ def _calc_loss(
     local_ctx_vectors,
     local_positive_idxs,
     local_hard_negatives_idxs: list = None,
+    loss_scale: float = None,
 ) -> Tuple[T, bool]:
     """
     Calculates In-batch negatives schema loss and supports to run it in DDP mode by exchanging the representations
@@ -753,7 +758,6 @@ def _calc_loss(
                     [[v + total_ctxs for v in l] for l in local_hard_negatives_idxs]
                 )
             total_ctxs += ctx_vectors.size(0)
-
         global_q_vector = torch.cat(global_q_vector, dim=0)
         global_ctxs_vector = torch.cat(global_ctxs_vector, dim=0)
 
@@ -768,6 +772,7 @@ def _calc_loss(
         global_ctxs_vector,
         positive_idx_per_question,
         hard_negatives_per_question,
+        loss_scale=loss_scale,
     )
 
     return loss, is_correct
@@ -780,6 +785,7 @@ def _do_biencoder_fwd_pass(
     cfg,
     encoder_type: str,
     rep_positions=0,
+    loss_scale: float = None,
 ) -> Tuple[torch.Tensor, int]:
     # logger.info('encoder_type %s', encoder_type)
     input = BiEncoderBatch(**move_to_device(input._asdict(), cfg.device))
@@ -821,6 +827,7 @@ def _do_biencoder_fwd_pass(
         local_ctx_vectors,
         input.is_positive,
         input.hard_negatives,
+        loss_scale=loss_scale,
     )
 
     is_correct = is_correct.sum().item()

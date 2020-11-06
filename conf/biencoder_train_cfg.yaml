@@ -7,6 +7,7 @@ train_datasets:
 dev_datasets:
 output_dir:
 train_sampling_rates:
+loss_scale_factors:
 
 do_lower_case: True
 fix_ctx_encoder: False
@@ -27,12 +28,8 @@ fp16_opt_level: O1
 
 
 special_tokens:
-  - '[Q]'
-  - '[R]'
-  - '[F]'
   - '[START_ENT]'
   - '[END_ENT]'
-  - '[D]'
 
 ignore_checkpoint_ofsset: False
 ignore_checkpoint_optimizer: False

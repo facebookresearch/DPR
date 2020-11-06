@@ -21,16 +21,29 @@ TableChunk = collections.namedtuple("TableChunk", ["text", "title", "table_id"])
 
 
 class QASrc(object):
-    def __init__(self, selector: DictConfig = None, special_query_token: str = None):
+    def __init__(
+        self,
+        selector: DictConfig = None,
+        special_query_token: str = None,
+        query_special_suffix: str = None,
+    ):
         self.data = None
         self.selector = hydra.utils.instantiate(selector) if selector else None
         self.special_query_token = special_query_token
+        self.query_special_suffix = query_special_suffix
 
     def __getitem__(self, index):
         return self.data[index]
 
     def __len__(self):
         return len(self.data)
+
+    def _process_question(self, question: str):
+        if self.query_special_suffix and not question.endswith(
+            self.query_special_suffix
+        ):
+            question += self.query_special_suffix
+        return question
 
 
 class CsvQASrc(QASrc):
@@ -42,8 +55,9 @@ class CsvQASrc(QASrc):
         id_col: int = -1,
         selector: DictConfig = None,
         special_query_token: str = None,
+        query_special_suffix: str = None,
     ):
-        super().__init__(selector=selector, special_query_token=special_query_token)
+        super().__init__(selector, special_query_token, query_special_suffix)
         self.question_col = question_col
         self.answers_col = answers_col
         self.id_col = id_col
@@ -59,7 +73,7 @@ class CsvQASrc(QASrc):
                 id = None
                 if self.id_col >= 0:
                     id = row[self.id_col]
-                data.append(QASample(question, id, answers))
+                data.append(QASample(self._process_question(question), id, answers))
 
         self.data = data
 
@@ -85,6 +99,26 @@ class ToyQASrc(QASrc):
             "barack obama [SEP] born in",
         ]
         data = [QASample(q, None, []) for q in data]
+        self.data = data
+
+
+# TMP
+class MusicCsvQASrc(QASrc):
+    def __init__(
+        self,
+        file: str,
+    ):
+        super().__init__(None, None, None)
+        self.file = file
+
+    def load_data(self):
+        data = []
+        with open(self.file) as ifile:
+            reader = csv.reader(ifile, delimiter="\t")
+            for row in reader:
+                question = row[0][0:-1]
+                answers = [a.strip() for a in row[1]]
+                data.append(QASample(question, None, answers))
 
         self.data = data
 
@@ -93,11 +127,14 @@ class JsonlQASrc(QASrc):
     def __init__(
         self,
         file: str,
+        selector: DictConfig = None,
         question_attr: str = "question",
         answers_attr: str = "answers",
         id_attr: str = "id",
+        special_query_token: str = None,
+        query_special_suffix: str = None,
     ):
-        super().__init__(selector=None)
+        super().__init__(selector, special_query_token, query_special_suffix)
         self.question_attr = question_attr
         self.answers_attr = answers_attr
         self.id_attr = id_attr
@@ -112,7 +149,7 @@ class JsonlQASrc(QASrc):
                 id = None
                 if self.id_attr in jline:
                     id = jline[self.id_attr]
-                data.append(QASample(question, id, answers))
+                data.append(QASample(self._process_question(question), id, answers))
         self.data = data
 
 
@@ -126,16 +163,57 @@ class KiltCsvQASrc(CsvQASrc):
         id_col: int = -1,
         selector: DictConfig = None,
         special_query_token: str = None,
+        query_special_suffix: str = None,
     ):
         super().__init__(
             file,
             question_col,
             answers_col,
             id_col,
-            selector=selector,
-            special_query_token=special_query_token,
+            selector,
+            special_query_token,
+            query_special_suffix,
         )
         self.kilt_gold_file = kilt_gold_file
+
+
+class KiltJsonlQASrc(JsonlQASrc):
+    def __init__(
+        self,
+        file: str,
+        kilt_gold_file: str,
+        question_attr: str = "input",
+        answers_attr: str = "answer",
+        out_attr: str = "output",
+        id_attr: str = "id",
+        selector: DictConfig = None,
+        special_query_token: str = None,
+        query_special_suffix: str = None,
+    ):
+        super().__init__(
+            file,
+            selector,
+            question_attr,
+            answers_attr,
+            id_attr,
+            special_query_token,
+            query_special_suffix,
+        )
+        self.kilt_gold_file = kilt_gold_file
+        self.out_attr = out_attr
+
+    def load_data(self):
+        data = []
+        with jsonlines.open(self.file, mode="r") as jsonl_reader:
+            for jline in jsonl_reader:
+                question = jline[self.question_attr]
+                out = jline[self.out_attr]
+                answers = out[self.answers_attr]
+                id = None
+                if self.id_attr in jline:
+                    id = jline[self.id_attr]
+                data.append(QASample(self._process_question(question), id, answers))
+        self.data = data
 
 
 # TODO: super class for CtxSrc ?

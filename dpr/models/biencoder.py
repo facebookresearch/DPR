@@ -358,7 +358,8 @@ class BiEncoderNllLoss(object):
         q_vectors: T,
         ctx_vectors: T,
         positive_idx_per_question: list,
-        hard_negatice_idx_per_question: list = None,
+        hard_negative_idx_per_question: list = None,
+        loss_scale: float = None,
     ) -> Tuple[T, int]:
         """
         Computes nll loss for the given lists of question and ctx vectors.
@@ -384,6 +385,8 @@ class BiEncoderNllLoss(object):
         correct_predictions_count = (
             max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)
         ).sum()
+        if loss_scale:
+            loss.mul_(loss_scale)
         return loss, correct_predictions_count
 
     @staticmethod
@@ -431,7 +434,7 @@ def _select_span_with_token(
         else:
             raise RuntimeError(
                 "[START_ENT] toke not found for Entity Linking sample query={}".format(
-                    question
+                    text
                 )
             )
     else:

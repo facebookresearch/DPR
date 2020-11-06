@@ -4,11 +4,13 @@ datasets:
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
     normalize: True
     shuffle_positives: True
+    query_special_suffix: '?'
 
   nq_dev_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
     normalize: True
+    query_special_suffix: '?'
 
   aidayago2_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
@@ -51,11 +53,13 @@ datasets:
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
     normalize: True
     shuffle_positives: True
+    query_special_suffix: '?'
 
   trivia_dev_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.json
     normalize: True
+    query_special_suffix: '?'
 
   zeroshot_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
@@ -73,11 +77,13 @@ datasets:
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
     normalize: True
     shuffle_positives: True
+    query_special_suffix: '?'
 
   hotpot_dev_kilt:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.json
     normalize: True
+    query_special_suffix: '?'
 
   trex_train:
     _target_: dpr.data.biencoder_data.JsonQADataset

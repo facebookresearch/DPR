@@ -108,17 +108,19 @@ class JsonQADataset(Dataset):
     def __init__(
         self,
         data_file_pattern: str,
-        selector: DictConfig = {},
+        selector: DictConfig = None,
         special_token: str = None,
         shared_encoder: bool = False,
         shuffle_positives: bool = False,
         normalize: bool = False,
+        query_special_suffix: str = None,
     ):
         super().__init__(
             selector,
             special_token=special_token,
             shared_encoder=shared_encoder,
             shuffle_positives=shuffle_positives,
+            query_special_suffix=query_special_suffix,
         )
         self.data_files = glob.glob(data_file_pattern)
         self.data = []
@@ -189,8 +191,8 @@ class JsonLTablesQADataset(Dataset):
     def __init__(
         self,
         data_file_pattern: str,
-        selector: DictConfig,
         is_train_set: bool,
+        selector: DictConfig = None,
         shuffle_positives: bool = False,
         max_negatives: int = 1,
         seed: int = 0,

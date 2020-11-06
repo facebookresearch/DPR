@@ -3,45 +3,6 @@ defaults:
   - datasets: retriever_query_src
   - ctx_sources: default_sources
 
-ctx_sources:
-  dpr_wiki:
-    _target_: dpr.data.retriever_data.CsvCtxSrc
-    file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
-    id_prefix: 'wiki:'
-
-  nq_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /checkpoint/vladk/datasets/tables/nq_all.tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'nqt:'
-
-  nq_train_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /checkpoint/vladk/datasets/tables/nq_train.tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'nqt:'
-
-  kilt_wiki:
-    _target_: dpr.data.retriever_data.KiltCsvCtxSrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
-
-  wiki_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'wt:'
-
-  wiki_with_lists:
-    _target_: dpr.data.retriever_data.CsvCtxSrc
-    file: /private/home/barlaso/data/wikipedia/passages_with_lists_w100.tsv
-    id_prefix: 'wikil:'
-
-  wiki_info_boxes:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /private/home/barlaso/data/wikipedia/wiki.infoboxes.20181220.dump.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'wib:'
-
 indexers:
   flat:
     _target_: dpr.indexer.faiss_indexers.DenseFlatIndexer

@@ -11,6 +11,10 @@ datasets:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
 
+  nq_dev_kilt:
+    _target_: dpr.data.biencoder_data.JsonQADataset
+    data_file_pattern: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
+
   # NQ Tables
   nq_train_tables_short_answers:
     class: dpr.data.biencoder_data.JsonLTablesQADataset

@@ -20,9 +20,24 @@ datasets:
     file: /private/home/vladk/src/natural-questions/nq_open/NQ-open.efficientqa.dev.1.1.jsonl
     answers_attr: answer
 
+  nq_dev_kilt:
+    _target_: dpr.data.retriever_data.KiltCsvQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-kilt.jsonl
+
+  nq_dev_kilt_ans:
+    _target_: dpr.data.retriever_data.KiltJsonlQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-kilt.jsonl
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-kilt.jsonl
+
   nq_test_kilt:
     _target_: dpr.data.retriever_data.KiltCsvQASrc
     file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-multikilt.tsv
+    kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
+
+  nq_test_kilt_ans:
+    _target_: dpr.data.retriever_data.KiltJsonlQASrc
+    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
     kilt_gold_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-kilt.jsonl
 
   trivia_test:
@@ -76,3 +91,15 @@ datasets:
 
   toy_test:
     _target_: dpr.data.retriever_data.ToyQASrc
+
+  music_train:
+    _target_: dpr.data.retriever_data.MusicCsvQASrc
+    file: /private/home/xilun/hybridqa/musicqa/split/musicqa_train.tsv
+
+  music_dev:
+    _target_: dpr.data.retriever_data.MusicCsvQASrc
+    file: /private/home/xilun/hybridqa/musicqa/split/musicqa_dev.tsv
+
+  music_test:
+    _target_: dpr.data.retriever_data.MusicCsvQASrc
+    file: /private/home/xilun/hybridqa/musicqa/split/musicqa_test.tsv

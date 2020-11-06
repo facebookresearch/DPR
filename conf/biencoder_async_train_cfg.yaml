@@ -51,9 +51,9 @@ index_train_ratio: 0.5
 index_nprobe: 32
 index_faiss_factory: ivf_simple
 index_centroids: 5000
-index_search_topk_k: 20
-async_max_hn: 10
-
+index_search_topk_k: 100
+async_max_hn: 30
+emb_files:
 
 ignore_checkpoint_ofsset: True
 ignore_checkpoint_optimizer: True
