@@ -22,7 +22,7 @@ from typing import Tuple, List
 
 from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
-from dpr.utils.data_utils import normalize_question
+from data.biencoder_data import normalize_question
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ class BiEncoder(nn.Module):
 
             neg_ctxs = sample["negative_ctxs"]
             hard_neg_ctxs = sample["hard_negative_ctxs"]
-            question = normalize_question(sample["question"])
+            # question = normalize_question(sample["question"])
 
             if shuffle:
                 random.shuffle(neg_ctxs)

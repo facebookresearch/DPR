@@ -14,6 +14,7 @@ from dpr.data.biencoder_data import (
     BiEncoderPassage,
     split_tables_to_chunks,
     normalize_kilt_passage,
+    normalize_question,
 )
 from dpr.data.tables import read_nq_tables_jsonl
 
@@ -41,6 +42,8 @@ class QASrc(object):
         return len(self.data)
 
     def _process_question(self, question: str):
+        # as of now, always normalize query
+        question = normalize_question(question)
         if self.query_special_suffix and not question.endswith(
             self.query_special_suffix
         ):

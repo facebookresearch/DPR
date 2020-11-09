@@ -333,13 +333,6 @@ class MultiSetDataIterator(object):
         return [it.get_dataset() for it in self.iterables]
 
 
-def normalize_question(question: str) -> str:
-    # if question[-1] == "?":
-    #    question = question[:-1]
-    question = question.replace("’", "'")
-    return question
-
-
 class Tensorizer(object):
     """
     Component for all text to model input data conversions and related utility methods

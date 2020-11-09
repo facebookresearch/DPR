@@ -99,8 +99,11 @@ class Dataset(torch.utils.data.Dataset):
         raise NotImplementedError
 
     def _process_query(self, query: str):
+        # as of now, always normalize query
+        query = normalize_question(query)
         if self.query_special_suffix and not query.endswith(self.query_special_suffix):
             query += self.query_special_suffix
+
         return query
 
 
@@ -603,3 +606,10 @@ def split_tables_to_chunks(
 def normalize_kilt_passage(ctx_text: str):
     ctx_text = ctx_text.replace("\n", " ").replace("’", "'")
     return ctx_text
+
+
+def normalize_question(question: str) -> str:
+    # if question[-1] == "?":
+    #    question = question[:-1]
+    question = question.replace("’", "'")
+    return question
