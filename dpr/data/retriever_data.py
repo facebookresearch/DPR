@@ -2,6 +2,8 @@ import collections
 import csv
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Dict
 
 import hydra
@@ -278,20 +280,21 @@ class KiltCsvCtxSrc(CsvCtxSrc):
             kilt_gold_file = list(reader)
         assert len(kilt_gold_file) == len(dpr_output)
 
-        chunk_id_to_wikipedia_id = []
-        with open(self.file, "rt", newline="") as fin:
-            reader = csv.DictReader(fin, delimiter="\t")
-            for i, row in enumerate(reader):
-                assert i == int(row["id"])
-                chunk_id_to_wikipedia_id.append(int(row["wikipedia_id"]))
+        map_path = os.path.join(Path(self.file), "map_back_to_kilt.pkl")
+        with open(map_path, "rb") as fin:
+            mapping = pickle.load(fin)
 
         with jsonlines.open(kilt_out_file, mode="w") as writer:
             for dpr_entry, kilt_gold_entry in zip(dpr_output, kilt_gold_file):
                 assert dpr_entry["question"] == kilt_gold_entry["input"]
                 provenance = []
                 for ctx in dpr_entry["ctxs"]:
+                    wikipedia_id, end_paragraph_id = chunk_id_to_kilt[int(ctx["id"])]
                     provenance.append(
-                        {"wikipedia_id": str(chunk_id_to_wikipedia_id[int(ctx["id"])])}
+                        {
+                            "wikipedia_id": wikipedia_id,
+                            "end_paragraph_id": end_paragraph_id,
+                        }
                     )
                 kilt_entry = {
                     "id": kilt_gold_entry["id"],
