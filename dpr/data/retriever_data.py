@@ -184,7 +184,6 @@ class KiltJsonlQASrc(JsonlQASrc):
         kilt_gold_file: str,
         question_attr: str = "input",
         answers_attr: str = "answer",
-        out_attr: str = "output",
         id_attr: str = "id",
         selector: DictConfig = None,
         special_query_token: str = None,
@@ -200,15 +199,14 @@ class KiltJsonlQASrc(JsonlQASrc):
             query_special_suffix,
         )
         self.kilt_gold_file = kilt_gold_file
-        self.out_attr = out_attr
 
     def load_data(self):
         data = []
         with jsonlines.open(self.file, mode="r") as jsonl_reader:
             for jline in jsonl_reader:
                 question = jline[self.question_attr]
-                out = jline[self.out_attr]
-                answers = out[self.answers_attr]
+                out = jline["output"]
+                answers = [o["answer"] for o in out if "answer" in o]
                 id = None
                 if self.id_attr in jline:
                     id = jline[self.id_attr]

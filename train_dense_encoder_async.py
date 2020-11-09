@@ -587,34 +587,36 @@ class BiEncoderTrainer(object):
             logger.info("Loaded index data %d", total_index_data)
             return
 
-        if emb_files:
-            input_paths = []
-            for i, pattern in enumerate(emb_files):
-                pattern_files = glob.glob(pattern)
-                input_paths.extend(pattern_files)
-
+        # tmp
+        log_meta = True
+        if emb_files and cfg.local_rank == 0:
+            logger.info("Reading embeddings from files")
             buffer = []
             index_bsz = cfg.index_batch_size
 
-            def send_buf_data(buffer, index_client):
+            def send_buf_data(buffer, index_client, log_meta):
                 buffer_vectors = [
                     np.reshape(encoded_item[1], (1, -1)) for encoded_item in buffer
                 ]
                 buffer_vectors = np.concatenate(buffer_vectors, axis=0)
-                meta = [encoded_item[0] for encoded_item in buffer]
+                meta = [int(encoded_item[0]) for encoded_item in buffer]
+                # tmp:
+                if log_meta:
+                    logger.info("!!! meta %s", meta)
+                logger.info("Sending vectors to index %s", buffer_vectors.shape)
                 index_client.add_index_data(index_id, buffer_vectors, meta)
 
             for i, item in enumerate(iterate_encoded_files(emb_files)):
                 buffer.append(item)
                 if 0 < index_bsz == len(buffer):
-                    send_buf_data(buffer, index)
+                    send_buf_data(buffer, index, log_meta)
+                    # tmp
+                    log_meta = False
                     buffer = []
             if buffer:
-                send_buf_data(buffer, index)
+                send_buf_data(buffer, index, log_meta)
             logger.info("Embeddings sent.")
-            self.index_client.sync_train(index_id)
-            logger.info("Remote index train completed")
-        else:
+        elif not emb_files:
             it = self._generate_embs_from_passages_it(shuffle_seed, passages)
             for i, index_batch in enumerate(it):
                 embeddings, meta = index_batch
@@ -657,7 +659,6 @@ class BiEncoderTrainer(object):
         tokenizer = SimpleTokenizer(**{})
 
         for ds in datasets:
-
             # requesting ALL data queries as of now
             queries, answers = ds.get_qas()
             index_bsz = 512  # cfg.index_batch_size
@@ -727,9 +728,16 @@ class BiEncoderTrainer(object):
                 epoch_batches,
             )
             self.index_client.drop_index(self.index_id)
-            self._build_index(cfg.seed, load_index=False)  # =epoch == 0
+            emb_files = cfg.emb_files
+            if emb_files:
+                emb_files = glob.glob(emb_files)
+            self._build_index(
+                cfg.seed,
+                emb_files=(emb_files if epoch == 0 else None),
+                load_index=False,
+            )
             self._wait_index_ready()
-            self.index_client.save_index(self.index_id)
+            # self.index_client.save_index(self.index_id)
             self.new_hn_dict = self._search_new_hard_negs()
             logger.info("!!! new_hn_dict size %d", len(self.new_hn_dict))
 
