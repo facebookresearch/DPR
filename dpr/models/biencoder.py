@@ -187,7 +187,7 @@ class BiEncoder(nn.Module):
 
             neg_ctxs = sample["negative_ctxs"]
             hard_neg_ctxs = sample["hard_negative_ctxs"]
-            # question = normalize_question(sample["question"])
+            question = normalize_question(sample["question"])
 
             if shuffle:
                 random.shuffle(neg_ctxs)

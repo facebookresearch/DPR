@@ -334,8 +334,9 @@ class MultiSetDataIterator(object):
 
 
 def normalize_question(question: str) -> str:
-    if question[-1] == "?":
-        question = question[:-1]
+    # if question[-1] == "?":
+    #    question = question[:-1]
+    question = question.replace("’", "'")
     return question
 
 

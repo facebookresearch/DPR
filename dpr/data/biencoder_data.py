@@ -601,5 +601,5 @@ def split_tables_to_chunks(
 
 
 def normalize_kilt_passage(ctx_text: str):
-    ctx_text = ctx_text.replace("\n", " ")
+    ctx_text = ctx_text.replace("\n", " ").replace("’", "'")
     return ctx_text
