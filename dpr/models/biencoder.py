@@ -22,7 +22,6 @@ from typing import Tuple, List
 
 from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
-from data.biencoder_data import normalize_question
 
 logger = logging.getLogger(__name__)
 
