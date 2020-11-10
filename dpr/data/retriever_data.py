@@ -290,7 +290,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
                 assert dpr_entry["question"] == kilt_gold_entry["input"]
                 provenance = []
                 for ctx in dpr_entry["ctxs"]:
-                    wikipedia_id, end_paragraph_id = chunk_id_to_kilt[int(ctx["id"])]
+                    wikipedia_id, end_paragraph_id = mapping[int(ctx["id"])]
                     provenance.append(
                         {
                             "wikipedia_id": wikipedia_id,
