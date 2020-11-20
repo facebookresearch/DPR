@@ -1,6 +1,6 @@
 defaults:
   - encoder: hf_bert
-  - datasets: retriever_query_src
+  - datasets: retriever_ur
   - ctx_sources: default_sources
 
 indexers:
