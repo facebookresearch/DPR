@@ -1,7 +1,7 @@
 defaults:
   - encoder: hf_bert
   - train: biencoder_default
-  - datasets: rep_from_cls
+  - datasets: ur
 
 train_datasets:
 dev_datasets:
