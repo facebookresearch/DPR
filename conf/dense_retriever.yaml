@@ -52,3 +52,4 @@ n_gpu:
 fp16: False
 fp16_opt_level: O1
 
+encoder_type: question
