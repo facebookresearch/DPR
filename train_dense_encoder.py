@@ -156,7 +156,13 @@ class BiEncoderTrainer(object):
                 else self.ds_cfg.dev_datasets_names,
             )
 
-            [ds.load_data() for ds in hydra_datasets]
+            # [ds.load_data() for ds in hydra_datasets]
+
+            # TODO: eval file system performance
+            datasets_list = [ds for ds in hydra_datasets]
+            rnd = random.Random(rank)
+            rnd.shuffle(datasets_list)
+            [ds.load_data() for ds in datasets_list]
 
             sharded_iterators = [
                 ShardedDataIterator(
@@ -177,42 +183,6 @@ class BiEncoderTrainer(object):
                 sampling_rates=sampling_rates if is_train_set else [1],
                 rank=rank,
             )
-
-    def get_data_iterator(
-        self,
-        path,
-        batch_size: int,
-        shuffle=True,
-        shuffle_seed: int = 0,
-        offset: int = 0,
-    ):  # -> ShardedDataIterator
-
-        if isinstance(path, list):
-            if len(path) > 1:
-                return self.get_multi_task_data_iterator(
-                    path,
-                    batch_size,
-                    shuffle=shuffle,
-                    shuffle_seed=shuffle_seed,
-                    offset=offset,
-                )
-            else:
-                path = path[0]
-
-        # TODO
-        ds = JsonQADataset(path)
-        ds.load_data()
-
-        return ShardedDataIterator(
-            ds,
-            shard_id=self.shard_id,
-            num_shards=self.distributed_factor,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            shuffle_seed=shuffle_seed,
-            offset=offset,
-            strict_batch_size=True,  # this is not really necessary, one can probably disable it
-        )
 
     def get_multi_task_data_iterator(
         self,
@@ -247,6 +217,10 @@ class BiEncoderTrainer(object):
         updates_per_epoch = (
             train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
         )
+        # tmp fix for lr schedule resuming issue
+        total_updates = updates_per_epoch * cfg.train.num_train_epochs
+
+        """
         total_updates = (
             max(
                 updates_per_epoch * (cfg.train.num_train_epochs - self.start_epoch - 1),
@@ -255,13 +229,25 @@ class BiEncoderTrainer(object):
             + (train_iterator.max_iterations - self.start_batch)
             // cfg.train.gradient_accumulation_steps
         )
+        """
         logger.info(" Total updates=%d", total_updates)
         warmup_steps = cfg.train.warmup_steps
-        scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
 
+        # tmp fix
         if self.scheduler_state:
             logger.info("Loading scheduler state %s", self.scheduler_state)
-            scheduler.load_state_dict(self.scheduler_state)
+            shift = int(self.scheduler_state["last_epoch"])
+            logger.info("Steps shift %d", shift)
+            scheduler = get_schedule_linear(
+                self.optimizer,
+                warmup_steps,
+                total_updates,
+                total_updates,
+                steps_shift=shift,
+            )
+            # scheduler.load_state_dict(self.scheduler_state)
+        else:
+            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
 
         eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
         logger.info("  Eval step = %d", eval_step)
@@ -337,13 +323,14 @@ class BiEncoderTrainer(object):
             rep_positions = ds_cfg.selector.get_positions(
                 biencoder_input.question_ids, self.tensorizer
             )
+            encoder_type = ds_cfg.encoder_type
 
             loss, correct_cnt = _do_biencoder_fwd_pass(
                 self.biencoder,
                 biencoder_input,
                 self.tensorizer,
                 cfg,
-                encoder_type="mixed",
+                encoder_type=encoder_type,
                 rep_positions=rep_positions,
             )
             total_loss += loss.item()
@@ -426,6 +413,7 @@ class BiEncoderTrainer(object):
 
             # get the token to be used for representation selection
             ds_cfg = self.ds_cfg.dev_datasets[dataset]
+            encoder_type = ds_cfg.encoder_type
             rep_positions = ds_cfg.selector.get_positions(
                 biencoder_input.question_ids, self.tensorizer
             )
@@ -459,6 +447,7 @@ class BiEncoderTrainer(object):
                         ctx_ids_batch,
                         ctx_seg_batch,
                         ctx_attn_mask,
+                        encoder_type=encoder_type,
                         representation_token_pos=rep_positions,
                     )
 
@@ -549,7 +538,7 @@ class BiEncoderTrainer(object):
 
             ds_cfg = self.ds_cfg.train_datasets[dataset]
             special_token = ds_cfg.special_token
-            shared_encoder = ds_cfg.shared_encoder
+            encoder_type = ds_cfg.encoder_type
             shuffle_positives = ds_cfg.shuffle_positives
             # logger.info(' special_token %s', special_token)
 
@@ -580,7 +569,7 @@ class BiEncoderTrainer(object):
                 biencoder_batch,
                 self.tensorizer,
                 cfg,
-                encoder_type="q_only" if shared_encoder else "mixed",
+                encoder_type=encoder_type,
                 rep_positions=rep_positions,
                 loss_scale=loss_scale,
             )
@@ -680,7 +669,8 @@ class BiEncoderTrainer(object):
             self.start_batch = 0
         else:
             self.start_epoch = epoch
-            self.start_batch = offset
+            # TODO: doesn't work for multiset currently
+            self.start_batch = 0  # offset
 
         model_to_load = get_model_obj(self.biencoder)
         logger.info("Loading saved model state ...")
@@ -812,7 +802,7 @@ def _do_biencoder_fwd_pass(
                 input.context_ids,
                 input.ctx_segments,
                 ctx_attn_mask,
-                encoder_type,
+                encoder_type=encoder_type,
                 representation_token_pos=rep_positions,
             )
 

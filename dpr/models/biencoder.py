@@ -12,13 +12,13 @@ BiEncoder component + loss function for 'all-in-batch' training
 import collections
 import logging
 import random
+from typing import Tuple, List
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor as T
 from torch import nn
-from typing import Tuple, List
 
 from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
@@ -116,13 +116,12 @@ class BiEncoder(nn.Module):
         context_ids: T,
         ctx_segments: T,
         ctx_attn_mask: T,
-        encoder_type: str = "mixed",
+        encoder_type: str = None,
         representation_token_pos=0,
     ) -> Tuple[T, T]:
-
         q_encoder = (
             self.question_model
-            if encoder_type in ["mixed", "q_only"]
+            if encoder_type is None or encoder_type == "question"
             else self.ctx_model
         )
         _q_seq, q_pooled_out, _q_hidden = self.get_representation(
@@ -134,10 +133,9 @@ class BiEncoder(nn.Module):
             representation_token_pos=representation_token_pos,
         )
 
-        # ctx_encoder = self.ctx_model
         ctx_encoder = (
             self.ctx_model
-            if encoder_type in ["mixed", "ctx_only"]
+            if encoder_type is None or encoder_type == "ctx"
             else self.question_model
         )
         _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(

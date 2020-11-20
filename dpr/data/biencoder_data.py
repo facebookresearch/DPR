@@ -82,16 +82,16 @@ class Dataset(torch.utils.data.Dataset):
         self,
         selector: DictConfig = None,
         special_token: str = None,
-        shared_encoder: bool = False,
         shuffle_positives: bool = False,
         query_special_suffix: str = None,
+        encoder_type: str = None,
     ):
         if selector:
             self.selector = hydra.utils.instantiate(selector)
         else:
             self.selector = DEFAULT_SELECTOR
         self.special_token = special_token
-        self.shared_encoder = shared_encoder
+        self.encoder_type = encoder_type
         self.shuffle_positives = shuffle_positives
         self.query_special_suffix = query_special_suffix
 
@@ -113,7 +113,7 @@ class JsonQADataset(Dataset):
         data_file_pattern: str,
         selector: DictConfig = None,
         special_token: str = None,
-        shared_encoder: bool = False,
+        encoder_type: str = None,
         shuffle_positives: bool = False,
         normalize: bool = False,
         query_special_suffix: str = None,
@@ -121,7 +121,7 @@ class JsonQADataset(Dataset):
         super().__init__(
             selector,
             special_token=special_token,
-            shared_encoder=shared_encoder,
+            encoder_type=encoder_type,
             shuffle_positives=shuffle_positives,
             query_special_suffix=query_special_suffix,
         )
@@ -255,6 +255,7 @@ class JsonLTablesQADataset(Dataset):
         f = {
             "type1": JsonLTablesQADataset._linearize_table,
             "type2": JsonLTablesQADataset._linearize_table2,
+            "type3": JsonLTablesQADataset._linearize_table3,
         }
         return f[split_type]
 
@@ -295,6 +296,31 @@ class JsonLTablesQADataset(Dataset):
             linearized_str = "\n".join(current_rows) + "\n"
             chunks.append(linearized_str)
             # logger.info('!!! chunk %s', linearized_str)
+        return chunks
+
+    @classmethod
+    # tmp
+    def split_table3(cls, t: dict, max_length: int):
+        rows = t["rows"]
+        chunks = []
+        current_rows = []
+        current_len = 0
+
+        for i in range(0, len(rows)):
+            row_lin, row_len = JsonLTablesQADataset._linearize_row(rows[i])
+            if len(row_lin) > 1:  # TODO: change to checking cell value tokens
+                current_rows.append(row_lin)
+                current_len += row_len
+            if current_len >= max_length:
+                # linearize chunk
+                linearized_str = "\n".join(current_rows) + "\n"
+                chunks.append(linearized_str)
+                current_rows = []
+                current_len = 0
+
+        if len(current_rows) > 1:
+            linearized_str = "\n".join(current_rows) + "\n"
+            chunks.append(linearized_str)
         return chunks
 
     @classmethod
@@ -340,7 +366,6 @@ class JsonLTablesQADataset(Dataset):
             result += [c["value"] for c in row["columns"] if c["value"] != ""]
             row_lin = "; ".join(result) + "\n"
             chunks.append(row_lin)
-        logger.info("!!! chunks %d", len(chunks))
         return chunks
 
     def _linearize_table(self, t: dict, is_positive: bool) -> List[str]:
@@ -397,6 +422,50 @@ class JsonLTablesQADataset(Dataset):
         # logger.info('!!! selected_rows %s', selected_rows)
         # logger.info('!!! total_words_len %s', total_words_len)
         # logger.info('!!! positive linearized_str %s', linearized_str)
+
+        return linearized_str
+
+    def _linearize_table3(self, t: dict, is_positive: bool) -> List[str]:
+        rows = t["rows"]
+        selected_rows = set()
+        rows_linearized = []
+        total_words_len = 0
+
+        # split to chunks
+        if is_positive:
+            row_idx_with_answers = [ap[0] for ap in t["answer_pos"]]
+
+            if self.shuffle_positives:
+                self.rnd.shuffle(row_idx_with_answers)
+            for i in row_idx_with_answers:
+                if i not in selected_rows:
+                    row_lin, row_len = JsonLTablesQADataset._linearize_row(rows[i])
+                    selected_rows.add(i)
+                    rows_linearized.append(row_lin)
+                    total_words_len += row_len
+                if total_words_len >= self.max_len:
+                    break
+
+        if total_words_len < self.max_len:  # append random rows
+
+            if self.is_train_set:
+                rows_indexes = np.random.permutation(range(len(rows)))
+            else:
+                rows_indexes = [*range(len(rows))]
+
+            for i in rows_indexes:
+                if i not in selected_rows:
+                    row_lin, row_len = JsonLTablesQADataset._linearize_row(rows[i])
+                    if len(row_lin) > 1:  # TODO: change to checking cell value tokens
+                        selected_rows.add(i)
+                        rows_linearized.append(row_lin)
+                        total_words_len += row_len
+                    if total_words_len >= self.max_len:
+                        break
+
+        linearized_str = ""
+        for r in rows_linearized:
+            linearized_str += r + "\n"
 
         return linearized_str
 
@@ -591,6 +660,8 @@ def split_tables_to_chunks(
     for i, t in enumerate(tables_as_dicts):
         if split_type == "type2":
             table_chunks = JsonLTablesQADataset.split_table2(t, max_table_len)
+        elif split_type == "type3":
+            table_chunks = JsonLTablesQADataset.split_table3(t, max_table_len)
         else:
             table_chunks = JsonLTablesQADataset.split_table(t, max_table_len)
         title = t["caption"]
