@@ -233,4 +233,7 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
         negatives_selected.append(empty_ids.clone())
 
     input_ids = torch.stack([t for t in positives_selected + negatives_selected], dim=0)
+    input_ids = input_ids.long()
     return input_ids, answer_starts_tensor, answer_ends_tensor, answer_mask
+
+

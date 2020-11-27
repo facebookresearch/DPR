@@ -40,7 +40,7 @@ if (logger.hasHandlers()):
 console = logging.StreamHandler()
 logger.addHandler(console)
 
-ReaderQuestionPredictions = collections.namedtuple('ReaderQuestionPredictions', ['id', 'predictions', 'gold_answers'])
+ReaderQuestionPredictions = collections.namedtuple('ReaderQuestionPredictions', ['question', 'id', 'predictions', 'gold_answers'])
 
 
 class ReaderTrainer(object):
@@ -177,21 +177,22 @@ class ReaderTrainer(object):
             if (i + 1) % log_result_step == 0:
                 logger.info('Eval step: %d ', i)
 
-        ems = defaultdict(list)
-
-        for q_predictions in all_results:
-            gold_answers = q_predictions.gold_answers
-            span_predictions = q_predictions.predictions  # {top docs threshold -> SpanPrediction()}
-            for (n, span_prediction) in span_predictions.items():
-                em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
-                ems[n].append(em_hit)
-        em = 0
-        for n in sorted(ems.keys()):
-            em = np.mean(ems[n])
-            logger.info("n=%d\tEM %.2f" % (n, em * 100))
-
         if args.prediction_results_file:
             self._save_predictions(args.prediction_results_file, all_results)
+
+        em = 0
+        if not args.test_only:
+            ems = defaultdict(list)
+
+            for q_predictions in all_results:
+                gold_answers = q_predictions.gold_answers
+                span_predictions = q_predictions.predictions  # {top docs threshold -> SpanPrediction()}
+                for (n, span_prediction) in span_predictions.items():
+                    em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
+                    ems[n].append(em_hit)
+            for n in sorted(ems.keys()):
+                em = np.mean(ems[n])
+                logger.info("n=%d\tEM %.2f" % (n, em * 100))
 
         return em
 
@@ -341,14 +342,18 @@ class ReaderTrainer(object):
                 passage_rank_matches = {}
                 for n in passage_thresholds:
                     curr_nbest = [pred for pred in nbest if pred.passage_index < n]
-                    passage_rank_matches[n] = curr_nbest[0]
+                    try:
+                        passage_rank_matches[n] = curr_nbest[0]
+                    except:
+                        print("No answer for {}".format(sample.question))
+                        passage_rank_matches[n] = SpanPrediction('', -1, -1, -1, '')
                 predictions = passage_rank_matches
             else:
                 if len(nbest) == 0:
                     predictions = {passages_per_question: SpanPrediction('', -1, -1, -1, '')}
                 else:
                     predictions = {passages_per_question: nbest[0]}
-            batch_results.append(ReaderQuestionPredictions(sample.question, predictions, sample.answers))
+            batch_results.append(ReaderQuestionPredictions(sample.question, sample.question_id, predictions, sample.answers))
         return batch_results
 
     def _calc_loss(self, input: ReaderBatch) -> torch.Tensor:
@@ -434,20 +439,21 @@ class ReaderTrainer(object):
             save_results = []
             for r in prediction_results:
                 save_results.append({
-                    'question': r.id,
+                    'question': r.question,
+                    'question_id': r.id,
                     'gold_answers': r.gold_answers,
                     'predictions': [{
                         'top_k': top_k,
                         'prediction': {
-                            'text': span_pred.prediction_text,
+                            'text': span_pred.prediction_text.replace(" ", ""),
                             'score': span_pred.span_score,
                             'relevance_score': span_pred.relevance_score,
                             'passage_idx': span_pred.passage_index,
-                            'passage': self.tensorizer.to_string(span_pred.passage_token_ids)
+                            'passage': self.tensorizer.to_string(span_pred.passage_token_ids).replace(" ", "")
                         }
                     } for top_k, span_pred in r.predictions.items()]
                 })
-            output.write(json.dumps(save_results, indent=4) + "\n")
+            output.write(json.dumps(save_results, indent=4, ensure_ascii=False) + "\n")
 
 
 def main():
@@ -482,6 +488,8 @@ def main():
     parser.add_argument('--fully_resumable', action='store_true',
                         help="Enables resumable mode by specifying global step dependent random seed before shuffling "
                              "in-batch data")
+    parser.add_argument('--test_only', action='store_true',
+                        help="Calculate exact match")
 
     args = parser.parse_args()
 

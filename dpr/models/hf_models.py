@@ -144,6 +144,11 @@ class BertTensorizer(Tensorizer):
     def text_to_tensor(self, text: str, title: str = None, add_special_tokens: bool = True):
         text = text.strip()
 
+        # NOTICE: for chineses
+        text = text.replace("[SEP]", " [SEP] ")
+        text = text.replace("[START]", " ")
+        text = text.replace("[END]", " ")
+
         # tokenizer automatic padding is explicitly disabled since its inconsistent behavior
         if title:
             token_ids = self.tokenizer.encode(title, text_pair=text, add_special_tokens=add_special_tokens,

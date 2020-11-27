@@ -66,12 +66,14 @@ class ReaderSample(object):
     def __init__(self, question: str, answers: List, positive_passages: List[ReaderPassage] = [],
                  negative_passages: List[ReaderPassage] = [],
                  passages: List[ReaderPassage] = [],
+                 question_id: str = "dummy_id",  
                  ):
         self.question = question
         self.answers = answers
         self.positive_passages = positive_passages
         self.negative_passages = negative_passages
         self.passages = passages
+        self.question_id = question_id
 
     def on_serialize(self):
         for passage in self.passages + self.positive_passages + self.negative_passages:
@@ -167,7 +169,9 @@ def preprocess_retriever_data(samples: List[Dict], gold_info_file: Optional[str]
             yield ReaderSample(question, sample['answers'], positive_passages=positive_passages,
                                negative_passages=negative_passages)
         else:
-            yield ReaderSample(question, sample['answers'], passages=negative_passages)
+            q_id = sample.get("question_id", "dummy_id")
+            yield ReaderSample(question, sample['answers'], passages=negative_passages,
+                    question_id=q_id)
 
     logger.info('no positive passages samples: %d', no_positive_passages)
     logger.info('positive passages from gold samples: %d', positives_from_gold)
