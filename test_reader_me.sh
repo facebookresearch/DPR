@@ -12,6 +12,7 @@ python -m torch.distributed.launch \
     --dev_batch_size 200 \
     --passages_per_question_predict 5 \
     --sequence_length 320  \
+    --max_answer_length 100 \
     --fp16 \
     --fp16_opt_level O2 \
     --test_only 
