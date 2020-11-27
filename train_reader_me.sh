@@ -9,7 +9,7 @@ python -m torch.distributed.launch \
     --passages_per_question 5 \
     --passages_per_question_predict 5 \
     --max_answer_length 100 \
-    --eval_top_docs 10 \
+    --eval_top_docs 5 \
     --learning_rate 1e-4 \
     --eval_step 12000 \
     --encoder_model_type hf_bert \
