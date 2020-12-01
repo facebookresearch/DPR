@@ -166,7 +166,7 @@ class BertTensorizer(Tensorizer):
         return torch.tensor([self.tokenizer.sep_token_id])
 
     def get_pad_id(self) -> int:
-        return self.tokenizer.pad_token_type_id
+        return self.tokenizer.pad_token_id
 
     def get_attn_mask(self, tokens_tensor: T) -> T:
         return tokens_tensor != self.get_pad_id()
