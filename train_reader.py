@@ -15,7 +15,7 @@ import collections
 import glob
 import json
 import logging
-import os
+import os, sys
 from collections import defaultdict
 from typing import List
 
@@ -23,6 +23,8 @@ import numpy as np
 import torch
 
 from dpr.data.qa_validation import exact_match_score
+from dpr.data.rouge import Rouge 
+from dpr.data.bleu import Bleu
 from dpr.data.reader_data import ReaderSample, get_best_spans, SpanPrediction, convert_retriever_results
 from dpr.models import init_reader_components
 from dpr.models.reader import create_reader_input, ReaderBatch, compute_loss
@@ -37,7 +39,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 if (logger.hasHandlers()):
     logger.handlers.clear()
-console = logging.StreamHandler()
+console = logging.StreamHandler(stream=sys.stdout)
 logger.addHandler(console)
 
 ReaderQuestionPredictions = collections.namedtuple('ReaderQuestionPredictions', ['question', 'id', 'predictions', 'gold_answers'])
@@ -181,8 +183,12 @@ class ReaderTrainer(object):
             self._save_predictions(args.prediction_results_file, all_results)
 
         em = 0
+        rouge_scorer = Rouge()
+        bleu_scorer = Bleu()
         if not args.test_only:
             ems = defaultdict(list)
+            gts = defaultdict(list)
+            preds = defaultdict(list)
 
             for q_predictions in all_results:
                 gold_answers = q_predictions.gold_answers
@@ -190,9 +196,14 @@ class ReaderTrainer(object):
                 for (n, span_prediction) in span_predictions.items():
                     em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
                     ems[n].append(em_hit)
+                    # for bleu/rouge later
+                    gts[n].append(gold_answers[0])
+                    preds[n].append(span_prediction.prediction_text)
             for n in sorted(ems.keys()):
                 em = np.mean(ems[n])
-                logger.info("n=%d\tEM %.2f" % (n, em * 100))
+                bleu = bleu_scorer.compute_score(gts[n], preds[n])
+                rouge = rouge_scorer.compute_score(gts[n], preds[n])
+                logger.info("n=%d\tEM %.2f\tRouge-L %.2f\tBLEU-4 %.2f" % (n, em * 100, rouge * 100, bleu * 100))
 
         return em
 
@@ -353,6 +364,7 @@ class ReaderTrainer(object):
                     predictions = {passages_per_question: SpanPrediction('', -1, -1, -1, '')}
                 else:
                     predictions = {passages_per_question: nbest[0]}
+            
             batch_results.append(ReaderQuestionPredictions(sample.question, sample.question_id, predictions, sample.answers))
         return batch_results
 

@@ -229,6 +229,7 @@ def get_best_spans(tensorizer: Tensorizer, start_logits: List, end_logits: List,
         for (j, e) in enumerate(end_logits[i:i + max_answer_length]):
             scores.append(((i, i + j), s + e))
 
+    # YZ: sort is slow, choose top-k is faster
     scores = sorted(scores, key=lambda x: x[1], reverse=True)
 
     chosen_span_intervals = []

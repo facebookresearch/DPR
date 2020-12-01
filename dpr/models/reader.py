@@ -77,7 +77,8 @@ def compute_loss(start_positions, end_positions, answer_mask, start_logits, end_
     # compute switch loss
     relevance_logits = relevance_logits.view(N, M)
     switch_labels = torch.zeros(N, dtype=torch.long).cuda()
-    switch_loss = torch.sum(loss_fct(relevance_logits, switch_labels))
+    # switch_loss = torch.sum(loss_fct(relevance_logits, switch_labels))
+    switch_loss = torch.mean(loss_fct(relevance_logits, switch_labels))
 
     # compute span loss
     start_losses = [(loss_fct(start_logits, _start_positions) * _span_mask)
@@ -91,7 +92,8 @@ def compute_loss(start_positions, end_positions, answer_mask, start_logits, end_
                   torch.cat([t.unsqueeze(1) for t in end_losses], dim=1)
 
     loss_tensor = loss_tensor.view(N, M, -1).max(dim=1)[0]
-    span_loss = _calc_mml(loss_tensor)
+    # span_loss = _calc_mml(loss_tensor)
+    span_loss = torch.mean(loss_tensor)
     return span_loss + switch_loss
 
 
