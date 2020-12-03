@@ -42,7 +42,7 @@ if (logger.hasHandlers()):
 console = logging.StreamHandler(stream=sys.stdout)
 logger.addHandler(console)
 
-ReaderQuestionPredictions = collections.namedtuple('ReaderQuestionPredictions', ['question', 'id', 'predictions', 'gold_answers'])
+ReaderQuestionPredictions = collections.namedtuple('ReaderQuestionPredictions', ['question', 'id', 'predictions', 'gold_answers', 'passages_has_answer'])
 
 
 class ReaderTrainer(object):
@@ -189,6 +189,7 @@ class ReaderTrainer(object):
             ems = defaultdict(list)
             gts = defaultdict(list)
             preds = defaultdict(list)
+            top1 = defaultdict(list)
 
             for q_predictions in all_results:
                 gold_answers = q_predictions.gold_answers
@@ -199,11 +200,16 @@ class ReaderTrainer(object):
                     # for bleu/rouge later
                     gts[n].append(gold_answers[0])
                     preds[n].append(span_prediction.prediction_text)
+                    # for qa_classify top1
+                    has_answer = q_predictions.passages_has_answer[span_prediction.passage_index]
+                    top1[n].append(float(has_answer))
+
             for n in sorted(ems.keys()):
                 em = np.mean(ems[n])
                 bleu = bleu_scorer.compute_score(gts[n], preds[n])
                 rouge = rouge_scorer.compute_score(gts[n], preds[n])
-                logger.info("n=%d\tEM %.2f\tRouge-L %.2f\tBLEU-4 %.2f" % (n, em * 100, rouge * 100, bleu * 100))
+                t1 = np.mean(top1[n])
+                logger.info("n=%d\tEM %.2f\tRouge-L %.2f\tBLEU-4 %.2f\tTop-1 %.2f\n" % (n, em * 100, rouge * 100, bleu * 100, t1 * 100))
 
         return em
 
@@ -365,7 +371,8 @@ class ReaderTrainer(object):
                 else:
                     predictions = {passages_per_question: nbest[0]}
             
-            batch_results.append(ReaderQuestionPredictions(sample.question, sample.question_id, predictions, sample.answers))
+            has_answer = [p.has_answer for p in sample.passages]
+            batch_results.append(ReaderQuestionPredictions(sample.question, sample.question_id, predictions, sample.answers, has_answer))
         return batch_results
 
     def _calc_loss(self, input: ReaderBatch) -> torch.Tensor:
