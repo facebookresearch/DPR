@@ -94,7 +94,7 @@ ReaderPreprocessingCfg = collections.namedtuple('ReaderPreprocessingCfg',
                                                  'gold_page_only_positives', 'max_positives', 'max_negatives',
                                                  'min_negatives', 'max_retriever_passages'])
 
-DEFAULT_PREPROCESSING_CFG_TRAIN = ReaderPreprocessingCfg(use_tailing_sep=False, skip_no_positves=True,
+DEFAULT_PREPROCESSING_CFG_TRAIN = ReaderPreprocessingCfg(use_tailing_sep=True, skip_no_positves=True,
                                                          include_gold_passage=False, gold_page_only_positives=True,
                                                          max_positives=20, max_negatives=50, min_negatives=150,
                                                          max_retriever_passages=200)

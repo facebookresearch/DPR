@@ -198,7 +198,7 @@ class ReaderTrainer(object):
                     em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
                     ems[n].append(em_hit)
                     # for bleu/rouge later
-                    gts[n].append(gold_answers[0])
+                    gts[n].append(gold_answers)
                     preds[n].append(span_prediction.prediction_text)
                     # for qa_classify top1
                     has_answer = q_predictions.passages_has_answer[span_prediction.passage_index]
@@ -464,7 +464,7 @@ class ReaderTrainer(object):
                     'predictions': [{
                         'top_k': top_k,
                         'prediction': {
-                            'text': span_pred.prediction_text.replace(" ", ""),
+                            'text': span_pred.prediction_text,
                             'score': span_pred.span_score,
                             'relevance_score': span_pred.relevance_score,
                             'passage_idx': span_pred.passage_index,

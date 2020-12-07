@@ -144,8 +144,10 @@ class BertTensorizer(Tensorizer):
     def text_to_tensor(self, text: str, title: str = None, add_special_tokens: bool = True):
         text = text.strip()
 
-        # NOTICE: for chineses
+        # NOTICE: for chinese
+        # text = text.replace("[SEP]", "")
         text = text.replace("[SEP]", " [SEP] ")
+        text = text.replace(" ", "")
         text = text.replace("[START]", " ")
         text = text.replace("[END]", " ")
 
@@ -181,7 +183,9 @@ class BertTensorizer(Tensorizer):
         return token.startswith("##") or token.startswith(" ##")
 
     def to_string(self, token_ids, skip_special_tokens=True):
-        return self.tokenizer.decode(token_ids, skip_special_tokens=True)
+        string = self.tokenizer.decode(token_ids, skip_special_tokens=True)
+        # NOTICE: for chinese
+        return string.replace(" ", "")
 
     def set_pad_to_max(self, do_pad: bool):
         self.pad_to_max = do_pad
