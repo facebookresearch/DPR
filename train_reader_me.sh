@@ -6,10 +6,10 @@ export CUDA_VISIBLE_DEVICES=0,1
 python train_reader.py \
     --seed 42 \
     --max_n_answers 1 \
-    --passages_per_question 1 \
-    --passages_per_question_predict 1 \
+    --passages_per_question 2 \
+    --passages_per_question_predict 5 \
+    --eval_top_docs 5 \
     --max_answer_length 500 \
-    --eval_top_docs 1 \
     --learning_rate 1e-5 \
     --eval_step 10000 \
     --warmup_steps 10000 \

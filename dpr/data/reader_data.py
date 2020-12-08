@@ -23,6 +23,7 @@ from torch import Tensor as T
 from tqdm import tqdm
 
 from dpr.utils.data_utils import Tensorizer
+import heapq
 
 logger = logging.getLogger()
 
@@ -230,7 +231,8 @@ def get_best_spans(tensorizer: Tensorizer, start_logits: List, end_logits: List,
             scores.append(((i, i + j), s + e))
 
     # YZ: sort is slow, choose top-k is faster
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    # scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    scores = heapq.nlargest(10*top_spans, scores, key=lambda x: x[1])
 
     chosen_span_intervals = []
     best_spans = []
