@@ -194,6 +194,8 @@ class ReaderTrainer(object):
             for q_predictions in all_results:
                 gold_answers = q_predictions.gold_answers
                 span_predictions = q_predictions.predictions  # {top docs threshold -> SpanPrediction()}
+                # Notice: bad for evaluation
+                if len(gold_answers) == 0: continue
                 for (n, span_prediction) in span_predictions.items():
                     em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
                     ems[n].append(em_hit)
