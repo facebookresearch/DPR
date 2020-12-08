@@ -357,9 +357,9 @@ class ReaderTrainer(object):
                 if len(nbest) > 0 and not passage_thresholds:
                     break
 
-            if args.score_order == 'span' :
+            if args.rank_method == 'span' :
                 nbest.sort(key=lambda x: x.span_score, reverse=True)
-            elif args.score_order == 'rel+span' :
+            elif args.rank_method == 'rel+span' :
                 nbest.sort(key=lambda x: x.span_score+x.relevance_socre, reverse=True)
 
             if passage_thresholds:
@@ -516,7 +516,7 @@ def main():
                              "in-batch data")
     parser.add_argument('--test_only', action='store_true',
                         help="do evaluation")
-    parser.add_argument('--score_order', default="rel->span", type=str,
+    parser.add_argument('--rank_method', default="rel->span", type=str,
                         help="Calculate exact match")
 
     args = parser.parse_args()
