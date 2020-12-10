@@ -360,7 +360,7 @@ class ReaderTrainer(object):
             if args.score_order == 'span' :
                 nbest.sort(key=lambda x: x.span_score, reverse=True)
             elif args.score_order == 'rel+span' :
-                nbest.sort(key=lambda x: x.span_score+x.relevance_socre, reverse=True)
+                nbest.sort(key=lambda x: x.span_score+x.relevance_score, reverse=True)
 
             if passage_thresholds:
                 passage_rank_matches = {}
