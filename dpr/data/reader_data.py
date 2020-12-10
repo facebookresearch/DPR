@@ -232,7 +232,7 @@ def get_best_spans(tensorizer: Tensorizer, start_logits: List, end_logits: List,
 
     # YZ: sort is slow, choose top-k is faster
     # scores = sorted(scores, key=lambda x: x[1], reverse=True)
-    scores = heapq.nlargest(10*top_spans, scores, key=lambda x: x[1])
+    scores = heapq.nlargest(top_spans, scores, key=lambda x: x[1])
 
     chosen_span_intervals = []
     best_spans = []

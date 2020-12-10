@@ -13,4 +13,3 @@ python train_reader.py \
     --max_answer_length 500 \
     # --test_only 
     # --fp16 \
-    # --fp16_opt_level O2 \
