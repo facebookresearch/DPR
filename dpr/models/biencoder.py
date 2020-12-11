@@ -123,7 +123,8 @@ class BiEncoder(nn.Module):
             else:
                 positive_ctx = sample['positive_ctxs'][0]
 
-            neg_ctxs = sample['negative_ctxs']
+            # neg_ctxs = sample['negative_ctxs']
+            neg_ctxs = sample.get('negative_ctxs', [])
             hard_neg_ctxs = sample['hard_negative_ctxs']
             question = normalize_question(sample['question'])
 
