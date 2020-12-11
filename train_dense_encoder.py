@@ -247,7 +247,7 @@ class BiEncoderTrainer(object):
             )
             # scheduler.load_state_dict(self.scheduler_state)
         else:
-            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
+            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates, total_updates)
 
         eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
         logger.info("  Eval step = %d", eval_step)
