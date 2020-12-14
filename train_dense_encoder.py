@@ -38,7 +38,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 if (logger.hasHandlers()):
     logger.handlers.clear()
-console = logging.StreamHandler()
+console = logging.StreamHandler(stream=sys.stdout)
 logger.addHandler(console)
 
 
