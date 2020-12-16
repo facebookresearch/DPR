@@ -12,4 +12,3 @@ python train_reader.py \
     --sequence_length 512 \
     --max_answer_length 500 \
     # --test_only 
-    # --fp16 \
