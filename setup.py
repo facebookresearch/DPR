@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("README.md") as f:
     readme = f.read()
@@ -34,5 +34,7 @@ setup(
         "tqdm>=4.27",
         "wget",
         "spacy>=2.1.8",
+        "hydra-core>=1.0.0",
+        "omegaconf>=2.0.1",
     ],
 )

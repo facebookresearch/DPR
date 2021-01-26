@@ -9,29 +9,24 @@
  Command line tool that produces embeddings for a large documents base based on the pretrained ctx & question encoders
  Supposed to be used in a 'sharded' way to speed up the process.
 """
-import csv
-import logging
-import os
-import pickle
+# import argparse
 
-import argparse
-import numpy as np
+import logging
+import math
+import os
 import pathlib
-import torch
-from torch import nn
+import pickle
 from typing import List, Tuple
 
-from dpr.data.biencoder_data import split_tables_to_chunks, normalize_kilt_passage
-from dpr.data.tables import read_nq_tables_jsonl
+import hydra
+import numpy as np
+import torch
+from omegaconf import DictConfig, OmegaConf
+from torch import nn
+
+from dpr.data.biencoder_data import BiEncoderPassage
 from dpr.models import init_biencoder_components
-from dpr.options import (
-    add_encoder_params,
-    setup_args_gpu,
-    print_args,
-    set_encoder_params_from_state,
-    add_tokenizer_params,
-    add_cuda_params,
-)
+from dpr.options import set_cfg_params_from_state, setup_cfg_gpu
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
@@ -49,32 +44,32 @@ logger.addHandler(console)
 
 
 def gen_ctx_vectors(
-    ctx_rows: List[Tuple[object, str, str]],
+    cfg: DictConfig,
+    ctx_rows: List[Tuple[object, BiEncoderPassage]],
     model: nn.Module,
     tensorizer: Tensorizer,
     insert_title: bool = True,
 ) -> List[Tuple[object, np.array]]:
     n = len(ctx_rows)
-    bsz = args.batch_size
+    bsz = cfg.batch_size
     total = 0
     results = []
     for j, batch_start in enumerate(range(0, n, bsz)):
-
         batch = ctx_rows[batch_start : batch_start + bsz]
-        if args.norm_passage:
-            batch = [(ctx[0], normalize_kilt_passage(ctx[1]), ctx[2]) for ctx in batch]
 
         batch_token_tensors = [
-            tensorizer.text_to_tensor(ctx[1], title=ctx[2] if insert_title else None)
+            tensorizer.text_to_tensor(
+                ctx[1].text, title=ctx[1].title if insert_title else None
+            )
             for ctx in batch
         ]
 
         ctx_ids_batch = move_to_device(
-            torch.stack(batch_token_tensors, dim=0), args.device
+            torch.stack(batch_token_tensors, dim=0), cfg.device
         )
-        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch), args.device)
+        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch), cfg.device)
         ctx_attn_mask = move_to_device(
-            tensorizer.get_attn_mask(ctx_ids_batch), args.device
+            tensorizer.get_attn_mask(ctx_ids_batch), cfg.device
         )
         with torch.no_grad():
             _, out, _ = model(ctx_ids_batch, ctx_seg_batch, ctx_attn_mask)
@@ -106,25 +101,34 @@ def gen_ctx_vectors(
     return results
 
 
-def main(args):
-    saved_state = load_states_from_checkpoint(args.model_file)
-    set_encoder_params_from_state(saved_state.encoder_params, args)
-    print_args(args)
+@hydra.main(config_path="conf", config_name="gen_embs")
+def main(cfg: DictConfig):
+
+    assert cfg.model_file, "Please specify encoder checkpoint as model_file param"
+    assert cfg.ctx_src, "Please specify passages source as ctx_src param"
+
+    cfg = setup_cfg_gpu(cfg)
+
+    saved_state = load_states_from_checkpoint(cfg.model_file)
+    set_cfg_params_from_state(saved_state.encoder_params, cfg)
+
+    logger.info("CFG:")
+    logger.info("%s", OmegaConf.to_yaml(cfg))
 
     tensorizer, encoder, _ = init_biencoder_components(
-        args.encoder_model_type, args, inference_only=True
+        cfg.encoder.encoder_model_type, cfg, inference_only=True
     )
 
-    encoder = encoder.ctx_model if args.sub_encoder == "ctx" else encoder.question_model
+    encoder = encoder.ctx_model if cfg.encoder_type == "ctx" else encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
         encoder,
         None,
-        args.device,
-        args.n_gpu,
-        args.local_rank,
-        args.fp16,
-        args.fp16_opt_level,
+        cfg.device,
+        cfg.n_gpu,
+        cfg.local_rank,
+        cfg.fp16,
+        cfg.fp16_opt_level,
     )
     encoder.eval()
 
@@ -141,46 +145,28 @@ def main(args):
     }
     model_to_load.load_state_dict(ctx_state)
 
-    logger.info("reading data from file=%s", args.ctx_file)
+    logger.info("reading data source: %s", cfg.ctx_src)
 
-    rows = []
+    ctx_src = hydra.utils.instantiate(cfg.ctx_sources[cfg.ctx_src])
+    all_passages_dict = {}
+    ctx_src.load_data_to(all_passages_dict)
+    all_passages = [(k, v) for k, v in all_passages_dict.items()]
 
-    if args.new_chunks:
-        with open(args.ctx_file, "rt", newline="") as fin:
-            reader = csv.DictReader(fin, delimiter="\t")
-            # file format: doc_id, doc_text, title
-            rows.extend(
-                [(row["id"], row["text"], row["wikipedia_title"]) for row in reader]
-            )
-    elif args.tables_as_passages:
-        logger.info("Parsing Tables ctx db")
-        tables_dict = read_nq_tables_jsonl(args.ctx_file)
-        rows.extend(
-            split_tables_to_chunks(
-                tables_dict, args.tables_chunk_sz, split_type=args.tables_split_type
-            )
-        )
-    else:
-        with open(args.ctx_file) as tsvfile:
-            reader = csv.reader(tsvfile, delimiter="\t")
-            # file format: doc_id, doc_text, title
-            rows.extend([(row[0], row[1], row[2]) for row in reader if row[0] != "id"])
-
-    shard_size = int(len(rows) / args.num_shards)
-    start_idx = args.shard_id * shard_size
+    shard_size = math.ceil(len(all_passages) / cfg.num_shards)
+    start_idx = cfg.shard_id * shard_size
     end_idx = start_idx + shard_size
 
     logger.info(
         "Producing encodings for passages range: %d to %d (out of total %d)",
         start_idx,
         end_idx,
-        len(rows),
+        len(all_passages),
     )
-    rows = rows[start_idx:end_idx]
+    shard_passages = all_passages[start_idx:end_idx]
 
-    data = gen_ctx_vectors(rows, encoder, tensorizer, True)
+    data = gen_ctx_vectors(cfg, shard_passages, encoder, tensorizer, True)
 
-    file = args.out_file + "_" + str(args.shard_id)
+    file = cfg.out_file + "_" + str(cfg.shard_id)
     pathlib.Path(os.path.dirname(file)).mkdir(parents=True, exist_ok=True)
     logger.info("Writing results to %s" % file)
     with open(file, mode="wb") as f:
@@ -190,58 +176,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    add_encoder_params(parser)
-    add_tokenizer_params(parser)
-    add_cuda_params(parser)
-
-    parser.add_argument(
-        "--ctx_file", type=str, default=None, help="Path to passages set .tsv file"
-    )
-    parser.add_argument(
-        "--out_file",
-        required=True,
-        type=str,
-        default=None,
-        help="output .tsv file path to write results to ",
-    )
-    parser.add_argument(
-        "--shard_id",
-        type=int,
-        default=0,
-        help="Number(0-based) of data shard to process",
-    )
-    parser.add_argument(
-        "--num_shards", type=int, default=1, help="Total amount of data shards"
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=32,
-        help="Batch size for the passage encoder forward pass",
-    )
-    parser.add_argument("--new_chunks", action="store_true")
-    parser.add_argument("--tables_as_passages", action="store_true")
-
-    parser.add_argument(
-        "--special_tokens",
-        nargs="+",
-        type=str,
-        default=["[Q]", "[R]", "[F]", "[START_ENT]", "[END_ENT]", "[D]"],
-    )
-
-    parser.add_argument("--tables_chunk_sz", type=int, default=100)
-    parser.add_argument("--tables_split_type", type=str, default="type1")
-    parser.add_argument("--sub_encoder", type=str, default="ctx")
-    parser.add_argument("--norm_passage", action="store_true")
-
-    args = parser.parse_args()
-
-    assert (
-        args.model_file
-    ), "Please specify --model_file checkpoint to init model weights"
-
-    setup_args_gpu(args)
-
-    main(args)
+    main()

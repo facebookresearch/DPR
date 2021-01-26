@@ -9,12 +9,9 @@
 """
  Pipeline to train DPR Biencoder
 """
-import argparse
-import csv
-import glob
+
 import logging
 import math
-import numpy as np
 import os
 import random
 import sys
@@ -23,7 +20,7 @@ from typing import Tuple, List, Iterable, Dict
 
 import hydra
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch import Tensor as T
 from torch import nn
 
@@ -37,15 +34,17 @@ from dense_retriever import iterate_encoded_files, generate_question_vectors
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, BiEncoderNllLoss, BiEncoderBatch
 from dpr.options import (
-    add_encoder_params,
-    add_training_params,
-    setup_args_gpu,
+    setup_cfg_gpu,
     set_seed,
-    add_tokenizer_params,
+    get_encoder_params_state_from_cfg,
     set_cfg_params_from_state,
 )
 from dpr.utils.conf_utils import BiencoderDatasetsCfg
-from dpr.utils.data_utils import ShardedDataIterator, Tensorizer, MultiSetDataIterator
+from dpr.utils.data_utils import (
+    ShardedDataIterator,
+    Tensorizer,
+    MultiSetDataIterator,
+)
 from dpr.utils.dist_utils import all_gather_list
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
@@ -62,11 +61,17 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 if logger.hasHandlers():
     logger.handlers.clear()
+
+log_formatter = logging.Formatter(
+    "[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 console = logging.StreamHandler()
+console.setFormatter(log_formatter)
 logger.addHandler(console)
 
 
 # TODO: unify with regular training pipeline
+@DeprecationWarning("Don't use")
 class BiEncoderTrainer(object):
     """
     BiEncoder training pipeline component. Can be used to initiate or resume training and validate the trained model
@@ -1158,7 +1163,7 @@ def main(cfg: DictConfig):
     if cfg.output_dir is not None:
         os.makedirs(cfg.output_dir, exist_ok=True)
 
-    cfg = setup_args_gpu(cfg)
+    cfg = setup_cfg_gpu(cfg)
     set_seed(cfg)
 
     logger.info("CFG (after gpu  configuration):")

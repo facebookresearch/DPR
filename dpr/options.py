@@ -21,6 +21,8 @@ from omegaconf import DictConfig
 
 logger = logging.getLogger()
 
+# TODO: to be merged with conf_utils.py
+
 
 def set_cfg_params_from_state(state: dict, cfg: DictConfig):
     """
