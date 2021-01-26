@@ -1,19 +1,19 @@
 import collections
 import csv
-import json
-import logging
-import os
-from pathlib import Path
-from typing import Dict
-
 import hydra
+import json
 import jsonlines
+import logging
+import pickle
+import torch
+
+from typing import Dict, List
 from omegaconf import DictConfig
 
 from dpr.data.biencoder_data import (
     BiEncoderPassage,
     split_tables_to_chunks,
-    normalize_kilt_passage,
+    normalize_passage,
     normalize_question,
 )
 from dpr.data.tables import read_nq_tables_jsonl
@@ -23,7 +23,7 @@ QASample = collections.namedtuple("QuerySample", ["query", "id", "answers"])
 TableChunk = collections.namedtuple("TableChunk", ["text", "title", "table_id"])
 
 
-class QASrc(object):
+class QASrc(torch.utils.data.Dataset):
     def __init__(
         self,
         selector: DictConfig = None,
@@ -79,52 +79,6 @@ class CsvQASrc(QASrc):
                 if self.id_col >= 0:
                     id = row[self.id_col]
                 data.append(QASample(self._process_question(question), id, answers))
-
-        self.data = data
-
-
-# TMP
-class ToyQASrc(QASrc):
-    def __init__(
-        self,
-        selector: DictConfig = None,
-        special_query_token: str = None,
-    ):
-        super().__init__(selector=selector, special_query_token=special_query_token)
-
-    def load_data(self):
-        data = [
-            "barack obama was born in kenya",
-            "barack obama was born in",
-            "where was barack obama born in",
-            "where barack obama born",
-            "where was barack obama born",
-            "where barack obama born",
-            "barack obama born",
-            "barack obama [SEP] born in",
-        ]
-        data = [QASample(q, None, []) for q in data]
-        self.data = data
-
-
-# TMP
-class MusicCsvQASrc(QASrc):
-    def __init__(
-        self,
-        file: str,
-    ):
-        super().__init__(None, None, None)
-        self.file = file
-
-    def load_data(self):
-        data = []
-        with open(self.file) as ifile:
-            reader = csv.reader(ifile, delimiter="\t")
-            for row in reader:
-                question = row[0][0:-1]
-                answers = [a.strip() for a in row[1]]
-                data.append(QASample(question, None, answers))
-
         self.data = data
 
 
@@ -150,7 +104,7 @@ class JsonlQASrc(QASrc):
         with jsonlines.open(self.file, mode="r") as jsonl_reader:
             for jline in jsonl_reader:
                 question = jline[self.question_attr]
-                answers = jline[self.answers_attr]
+                answers = jline[self.answers_attr] if self.answers_attr in jline else []
                 id = None
                 if self.id_attr in jline:
                     id = jline[self.id_attr]
@@ -237,8 +191,7 @@ class CsvCtxSrc(object):
         self.id_prefix = id_prefix
         self.normalize = normalize
 
-    def load_data_to(self, ctxs: Dict):
-        ctxs_dict = {}
+    def load_data_to(self, ctxs: Dict[object, BiEncoderPassage]):
         with open(self.file) as ifile:
             reader = csv.reader(ifile, delimiter="\t")
             for row in reader:
@@ -249,18 +202,15 @@ class CsvCtxSrc(object):
                         sample_id = row[self.id_col]
                     passage = row[self.text_col]
                     if self.normalize:
-                        passage = normalize_kilt_passage(passage)
-                    ctxs_dict[sample_id] = BiEncoderPassage(
-                        passage, row[self.title_col]
-                    )
-
-        ctxs.update(ctxs_dict)
+                        passage = normalize_passage(passage)
+                    ctxs[sample_id] = BiEncoderPassage(passage, row[self.title_col])
 
 
 class KiltCsvCtxSrc(CsvCtxSrc):
     def __init__(
         self,
         file: str,
+        mapping_file: str,
         id_col: int = 0,
         text_col: int = 1,
         title_col: int = 2,
@@ -270,6 +220,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
         super().__init__(
             file, id_col, text_col, title_col, id_prefix, normalize=normalize
         )
+        self.mapping_file = mapping_file
 
     def convert_to_kilt(self, kilt_gold_file, dpr_output, kilt_out_file):
         logger.info("Converting to KILT format file: %s", dpr_output)
@@ -280,8 +231,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
         with jsonlines.open(kilt_gold_file, "r") as reader:
             kilt_gold_file = list(reader)
         assert len(kilt_gold_file) == len(dpr_output)
-
-        map_path = os.path.join(Path(self.file), "map_back_to_kilt.pkl")
+        map_path = self.mapping_file
         with open(map_path, "rb") as fin:
             mapping = pickle.load(fin)
 
@@ -328,8 +278,78 @@ class JsonlTablesCtxSrc(object):
             tables_dict, self.tables_chunk_sz, split_type=self.split_type
         )
         for chunk in table_chunks:
-            # "tab." + str(chunk[0])
             sample_id = self.id_prefix + str(chunk[0])
             docs[sample_id] = TableChunk(chunk[1], chunk[2], chunk[3])
         logger.info("Loaded %d tables chunks", len(docs))
         ctxs.update(docs)
+
+
+class ToyCtxSrc(object):
+    def __init__(
+        self,
+    ):
+        self.id_prefix = ""
+        self.normalize = False
+        self.data = [
+            (
+                "This makes shortwave radio one of the most robust means of communications, which can be disrupted only by interference or bad ionospheric conditions. Modern digital transmission modes such as MFSK and Olivia are even more robust, allowing successful reception of signals well below the noise floor of a conventional receiver. Shortwave radio's benefits are sometimes regarded as being outweighed by its drawbacks, including: BULLET::::- In most Western countries, shortwave radio ownership is usually limited to true enthusiasts, since most new standard radios do not receive the shortwave band. Therefore, Western audiences are limited. BULLET::::- In the developed world, shortwave reception is very difficult in urban areas because of excessive noise from switched-mode power adapters, fluorescent or LED light sources, internet modems and routers",
+                "Shortwave radio",
+            ),
+            (
+                "Shortwave broadcast radio uses digital transmission modes such as MFSK and Olivia, allowing successful reception of signals well below the noise floor of a conventional receiver. This makes shortwave radio one of the most robust means of communications, which can be disrupted only by interference or bad ionospheric conditions. Shortwave radio's benefits are sometimes regarded as being outweighed by its drawbacks, including: BULLET::::- In most Western countries, shortwave radio ownership is usually limited to true enthusiasts, since most new standard radios do not receive the shortwave band. Therefore, Western audiences are limited. BULLET::::- In the developed world, shortwave reception is very difficult in urban areas because of excessive noise from switched-mode power adapters, fluorescent or LED light sources, internet modems and routers",
+                "Shortwave radio",
+            ),
+            (
+                "Shortwave radio can benefit from modern digital transmission modes such as MFSK and Olivia which are robust, allowing successful reception of signals well below the noise floor of a conventional receiver. Shortwave radio's benefits are sometimes regarded as being outweighed by its drawbacks, including: BULLET::::- In most Western countries, shortwave radio ownership is usually limited to true enthusiasts, since most new standard radios do not receive the shortwave band. Therefore, Western audiences are limited. BULLET::::- In the developed world, shortwave reception is very difficult in urban areas because of excessive noise from switched-mode power adapters, fluorescent or LED light sources, internet modems and routers",
+                "Shortwave radio",
+            ),
+            (
+                "Shortwave radio is one of the most robust means of communications since it can use modern digital transmission modes such as MFSK and Olivia, allowing successful reception of signals well below the noise floor of a conventional receiver. Shortwave radio's benefits are sometimes regarded as being outweighed by its drawbacks, including: BULLET::::- In most Western countries, shortwave radio ownership is usually limited to true enthusiasts, since most new standard radios do not receive the shortwave band. Therefore, Western audiences are limited. BULLET::::- In the developed world, shortwave reception is very difficult in urban areas because of excessive noise from switched-mode ",
+                "Shortwave radio",
+            ),
+            (
+                "Heavy showers coming from pre-monsoonal convective clouds mainly in the form of squall lines also known as the north easterlies formed mainly as a result of the interactions of the two dominant airmasses in Nigeria known as the Maritime tropical (south westerlies) and the Continental tropical (north easterlies). It begins in central Nigeria while the Monsoons from the south atlantic ocean arrives in central Nigeria in July bringing with it high humidity, heavy cloud cover and heavy rainfall which can be daily occurrence lasting till September when the monsoons gradually begin retreating southward to the southern part of Nigeria.",
+                "Geography of Nigeria",
+            ),
+            (
+                "Heavy showers coming from pre-monsoonal convective clouds mainly in the form of squall lines also known as the north easterlies formed mainly as a result of the interactions of the two dominant airmasses in Nigeria known as the Maritime tropical (south westerlies) and the Continental tropical (north easterlies). It begins in central Nigeria when south westerlies arrives in central Nigeria in July bringing with it high humidity, heavy cloud cover and heavy rainfall which can be daily occurrence lasting till September when the monsoons gradually begin retreating southward to the southern part of Nigeria. Rainfall totals in central Nigeria",
+                "Geography of Nigeria",
+            ),
+            (
+                "Heavy showers coming from pre-monsoonal convective clouds mainly in the form of squall lines also known as the north easterlies formed mainly as a result of the interactions of the two dominant airmasses in Nigeria known as the Maritime tropical (south westerlies) and the Continental tropical (north easterlies). South west winds  arrives in central Nigeria in July bringing with it high humidity, heavy cloud cover and heavy rainfall which can be daily occurrence lasting till September when the monsoons gradually begin retreating southward to the southern part of Nigeria. Rainfall totals in central Nigeria varies from 1,100 mm (43.3 in) in the lowlands of the river Niger Benue trough",
+                "Geography of Nigeria",
+            ),
+            (
+                "Heavy showers coming from pre-monsoonal convective clouds mainly in the form of squall lines also known as the north easterlies formed mainly as a result of the interactions of the two dominant airmasses in Nigeria known as the Maritime tropical (south westerlies) and the Continental tropical (north easterlies). South west airmasses  arrives in central Nigeria in July bringing with it high humidity, heavy cloud cover and heavy rainfall which can be daily occurrence lasting till September when the monsoons gradually begin retreating southward to the southern part of Nigeria. Rainfall totals in central Nigeria varies from 1,100 mm (43.3 in) in the lowlands of the river Niger Benue trough",
+                "Geography of Nigeria",
+            ),
+            (
+                "South west airmasses  arrives in central Nigeria in July bringing with it high humidity, heavy cloud cover and heavy rainfall which can be daily occurrence lasting till September when the monsoons gradually begin retreating southward to the southern part of Nigeria. Heavy showers coming from pre-monsoonal convective clouds mainly in the form of squall lines also known as the north easterlies formed mainly as a result of the interactions of the two dominant airmasses in Nigeria known as the Maritime tropical (south westerlies) and the Continental tropical (north easterlies). Rainfall totals in central Nigeria varies from 1,100 mm (43.3 in) in the lowlands of the river Niger Benue trough",
+                "Geography of Nigeria",
+            ),
+            (
+                "Thus, the right to property is no longer a fundamental right, though it is still a constitutional right. If the government appears to have acted unfairly, the action can be challenged in a court of law by aggrieved citizens. The liberalisation of the economy and the government's initiative to set up special economic zones has led to many protests by farmers and have led to calls for the reinstatement of the fundamental right to private property. Supreme Court had sent a notice to the government questioning why the right should not be brought back, but in 2010, the Court rejected the PIL.",
+                "Fundamental rights in India",
+            ),
+            (
+                "Furthermore, the aggrieved person would also have no right to move the court under Article 32 due to the right to property no longer being a fundamental right, though it would still be a constitutional one. If the government appears to have acted unfairly, the action can be challenged in a court of law by aggrieved citizens. The liberalisation of the economy and the government's initiative to set up special economic zones has led to many protests by farmers and have led to calls for the reinstatement of the fundamental right to private property. The Supreme Court has sent a notice to the government questioning why the right",
+                "Fundamental rights in India",
+            ),
+            (
+                "Since the right to property is no longer being a fundamental right, the aggrieved person would also have no right to move the court . But the right to property is still a constitutional right. The liberalisation of the economy and the government's initiative to set up special economic zones has led to many protests by farmers and have led to calls for the reinstatement of the fundamental right to private property. Supreme Court had sent a notice to the government questioning why the right should not be brought back, but in 2010, the Court rejected the PIL.",
+                "Fundamental rights in India",
+            ),
+            (
+                'The right to property according to the constitution of india is a is no longer being a fundamental right but is still a constitutional right.The provisions relating to the right to property were changed a number of times. The 44th Amendment of 1978 removed the right to property from the list of fundamental rights.[50] A new provision, Article 300-A, was added to the constitution, which provided that "no person shall be deprived of his property save by authority of law". Thus, if a legislator made a law depriving a person of his property, there would be no obligation on the part of the State to pay anything as compensation.',
+                "Fundamental rights in India",
+            ),
+        ]
+
+    def load_data_to(self, ctxs: Dict[object, BiEncoderPassage]):
+        for i, s in enumerate(self.data):
+            tokens = s[0].split()
+            tokens = tokens[0:100]
+            passage = " ".join(tokens)
+            logger.info("passage %s", passage)
+            logger.info("title %s", s[1])
+            ctxs[i] = BiEncoderPassage(passage, s[1])

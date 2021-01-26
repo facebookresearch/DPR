@@ -106,45 +106,6 @@ class ShardedDataIterator(object):
     def max_iterations_num(self) -> int:
         return self.max_iterations
 
-    # TODO remove
-    def iterate_data(self, epoch: int = 0) -> Iterator[List]:
-
-        # tmp: always assumes it is JsonQADataset object
-        data = self.data.data
-
-        if self.shuffle:
-            # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
-            epoch_rnd = random.Random(self.shuffle_seed + epoch)
-            epoch_rnd.shuffle(data)
-
-        # if resuming iteration somewhere in the middle of epoch, one needs to adjust max_iterations
-        max_iterations = self.max_iterations - self.iteration
-
-        for i in range(
-            self.iteration * self.batch_size, len(shard_samples), self.batch_size
-        ):
-            items = data[i : i + self.batch_size]
-            if self.strict_batch_size and len(items) < self.batch_size:
-                logger.debug("Extending batch to max size")
-                items.extend(data[0 : self.batch_size - len(items)])
-            self.iteration += 1
-            yield items
-
-        # some shards may done iterating while the others are at the last batch. Just return the first batch
-        while self.iteration < max_iterations:
-            logger.debug("Fulfilling non complete shard=".format(self.shard_id))
-            self.iteration += 1
-            batch = data[0 : self.batch_size]
-            yield batch
-
-        logger.debug(
-            "Finished iterating, iteration={}, shard={}".format(
-                self.iteration, self.shard_id
-            )
-        )
-        # reset the iteration status
-        self.iteration = 0
-
     def get_iteration(self) -> int:
         return self.iteration
 
@@ -258,6 +219,9 @@ class MultiSetDataIterator(object):
     def total_data_len(self) -> int:
         return self.total_data
 
+    def get_max_iterations(self):
+        return self.max_iterations
+
     def iterate_ds_data(self, epoch: int = 0) -> Iterator[Tuple[List, int]]:
 
         logger.info("rank=%d; Iteration start", self.rank)
@@ -292,11 +256,9 @@ class MultiSetDataIterator(object):
         )
         for i, source_idx in enumerate(data_src_indices):
             it = iterators[source_idx]
-            # logger.info('Multi set iteration: source selected: %d', self.rank, source_idx)
             next_item = next(it, None)
             if next_item is not None:
                 self.iteration += 1
-                # logger.info('rank=%d; Multi set iteration: %d', self.rank, self.iteration)
                 yield (next_item, source_idx)
             else:
                 logger.warning(

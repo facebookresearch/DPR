@@ -17,6 +17,7 @@ checkpoint_file_name: dpr_biencoder
 model_file:
 
 # TODO: move to a sub conf
+
 local_rank: -1
 global_loss_buf_sz: 592000
 device:
@@ -55,5 +56,5 @@ index_search_topk_k: 100
 async_max_hn: 30
 emb_files:
 
-ignore_checkpoint_ofsset: True
+ignore_checkpoint_offset: True
 ignore_checkpoint_optimizer: True

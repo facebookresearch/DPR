@@ -22,6 +22,7 @@ from torch import nn
 
 from dpr.data.biencoder_data import BiEncoderSample
 from dpr.utils.data_utils import Tensorizer
+from dpr.utils.model_utils import CheckpointState
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,16 @@ class BiEncoder(nn.Module):
             hard_neg_ctx_indices,
             "question",
         )
+
+    def load_state(self, saved_state: CheckpointState):
+        # TODO: long term HF compatibility fix
+        if "question_model.embeddings.position_ids" in saved_state.model_dict:
+            del saved_state.model_dict["question_model.embeddings.position_ids"]
+            del saved_state.model_dict["ctx_model.embeddings.position_ids"]
+        self.load_state_dict(saved_state.model_dict)
+
+    def get_state_dict(self):
+        return self.state_dict()
 
 
 class BiEncoderNllLoss(object):

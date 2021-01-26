@@ -100,7 +100,7 @@ def calculate_chunked_matches(
     dpr_all_tables = {}
 
     for key, table_chunk in all_docs.items():
-        table_str, title, table_id = table_chunk.t
+        table_str, title, table_id = table_chunk
         table_chunks = dpr_all_tables.get(table_id, [])
         table_chunks.append((table_str, title))
         dpr_all_tables[table_id] = table_chunks

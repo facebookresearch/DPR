@@ -14,7 +14,6 @@ import glob
 import gzip
 import json
 import logging
-import os
 import pickle
 import time
 from typing import List, Tuple, Dict, Iterator
@@ -29,16 +28,14 @@ from torch import nn
 from distributed_faiss.client import IndexClient
 from dpr.data.biencoder_data import split_tables_to_chunks, RepTokenSelector
 from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches
-from dpr.data.retriever_data import TableChunk, KiltCsvCtxSrc, KiltCsvQASrc
+from dpr.data.retriever_data import TableChunk, KiltCsvCtxSrc
 from dpr.data.tables import read_nq_tables_jsonl
 from dpr.indexer.faiss_indexers import (
     DenseIndexer,
-    DenseHNSWFlatIndexer,
-    DenseFlatIndexer,
 )
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, _select_span_with_token
-from dpr.options import setup_args_gpu, set_cfg_params_from_state
+from dpr.options import setup_cfg_gpu, set_cfg_params_from_state
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
@@ -356,7 +353,7 @@ def save_results(
 ):
     # join passages text with the result ids, their questions and assigning has|no answer labels
     merged_data = []
-    assert len(per_question_hits) == len(questions) == len(answers)
+    # assert len(per_question_hits) == len(questions) == len(answers)
     for i, q in enumerate(questions):
         q_answers = answers[i]
         results_and_scores = top_passages_and_scores[i]
@@ -408,7 +405,7 @@ def iterate_encoded_files(
 
 @hydra.main(config_path="conf", config_name="dense_retriever")
 def main(cfg: DictConfig):
-    cfg = setup_args_gpu(cfg)
+    cfg = setup_cfg_gpu(cfg)
 
     logger.info("CFG (after gpu  configuration):")
     logger.info("%s", OmegaConf.to_yaml(cfg))
@@ -420,7 +417,13 @@ def main(cfg: DictConfig):
         cfg.encoder.encoder_model_type, cfg, inference_only=True
     )
 
-    encoder = encoder.question_model
+    encoder_path = cfg.encoder_path
+    if encoder_path:
+        logger.info("Selecting encoder: %s", encoder_path)
+        encoder = getattr(encoder, encoder_path)
+    else:
+        logger.info("Selecting standard question encoder")
+        encoder = encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
         encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16
@@ -431,11 +434,14 @@ def main(cfg: DictConfig):
     model_to_load = get_model_obj(encoder)
     logger.info("Loading saved model state ...")
 
-    prefix_len = len("question_model.")
+    encoder_prefix = (encoder_path if encoder_path else "question_model") + "."
+    prefix_len = len(encoder_prefix)
+
+    logger.info("Encoder state prefix %s", encoder_prefix)
     question_encoder_state = {
         key[prefix_len:]: value
         for (key, value) in saved_state.model_dict.items()
-        if key.startswith("question_model.")
+        if key.startswith(encoder_prefix)
     }
     model_to_load.load_state_dict(question_encoder_state)
     vector_size = model_to_load.get_out_size()
@@ -493,8 +499,17 @@ def main(cfg: DictConfig):
 
     # index all passages
     ctx_files_patterns = cfg.encoded_ctx_files
+    index_path = cfg.index_path
+
     logger.info("ctx_files_patterns: %s", ctx_files_patterns)
-    assert len(ctx_files_patterns) == len(id_prefixes)
+    if ctx_files_patterns:
+        assert len(ctx_files_patterns) == len(
+            id_prefixes
+        ), "ctx len={} pref leb={}".format(len(ctx_files_patterns), len(id_prefixes))
+    else:
+        assert (
+            index_path
+        ), "Either encoded_ctx_files or index_path parameter should be set."
 
     input_paths = []
     path_id_prefixes = []
@@ -506,16 +521,15 @@ def main(cfg: DictConfig):
 
     logger.info("Embeddings files id prefixes: %s", path_id_prefixes)
 
-    index_path = "_".join(input_paths[0].split("_")[:-1])
-    logger.info("Index path: %s", index_path)
-    if cfg.save_or_load_index and index and index.index_exists(index_path):
+    if index_path and index.index_exists(index_path):
+        logger.info("Index path: %s", index_path)
         retriever.index.deserialize(index_path)
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
         retriever.index_encoded_data(
             input_paths, buffer_size=index_buffer_sz, path_id_prefixes=path_id_prefixes
         )
-        if cfg.save_or_load_index:
+        if index_path:
             retriever.index.serialize(index_path)
 
     # get top k results
@@ -523,9 +537,6 @@ def main(cfg: DictConfig):
 
     # to reduce memory footprint, we no longer need the index
     retriever = None
-    import gc
-
-    gc.collect()
 
     all_passages = {}
     for ctx_src in ctx_sources:
@@ -569,7 +580,7 @@ def main(cfg: DictConfig):
         )
         if not kilt_ctx:
             raise RuntimeError("No Kilt compatible context file provided")
-        assert isinstance(qa_src, KiltCsvQASrc)
+        assert hasattr(cfg, "kilt_out_file")
         kilt_ctx.convert_to_kilt(qa_src.kilt_gold_file, cfg.out_file, cfg.kilt_out_file)
 
 

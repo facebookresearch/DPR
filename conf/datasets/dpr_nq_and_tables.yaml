@@ -23,7 +23,7 @@ datasets:
       is_train_set: True
       shuffle_positives: True
       max_len: 100
-      split_type: type1
+      split_type: type4
 
   nq_test_tables_short_answers:
     class: dpr.data.biencoder_data.JsonLTablesQADataset
@@ -32,7 +32,7 @@ datasets:
       is_train_set: False
       shuffle_positives: False
       max_len: 100
-      split_type: type1
+      split_type: type4
 
   nq_train_tables_long_answers:
     class: dpr.data.biencoder_data.JsonLTablesQADataset
@@ -41,12 +41,11 @@ datasets:
       is_train_set: True
       shuffle_positives: True
       max_len: 100
-      split_type: type1
+      split_type: type3
 
   trivia_train:
     _target_: dpr.data.biencoder_data.JsonQADataset
     data_file_pattern: /checkpoint/vladk/dpr_open_source/triviaqa-train.json
-    shared_encoder: false
 
   curated_trec_train:
     _target_: dpr.data.biencoder_data.JsonQADataset

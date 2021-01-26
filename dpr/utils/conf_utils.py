@@ -18,10 +18,11 @@ class BiencoderDatasetsCfg(object):
             ]
         else:
             self.train_datasets = []
-        self.dev_datasets_names = cfg.dev_datasets
-        logger.info("dev_datasets: %s", self.dev_datasets_names)
-        self.dev_datasets = [
-            hydra.utils.instantiate(datasets[ds_name])
-            for ds_name in self.dev_datasets_names
-        ]
+        if cfg.dev_datasets:
+            self.dev_datasets_names = cfg.dev_datasets
+            logger.info("dev_datasets: %s", self.dev_datasets_names)
+            self.dev_datasets = [
+                hydra.utils.instantiate(datasets[ds_name])
+                for ds_name in self.dev_datasets_names
+            ]
         self.sampling_rates = cfg.train_sampling_rates

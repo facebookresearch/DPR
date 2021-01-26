@@ -25,11 +25,24 @@ out_file:
 match: string
 n_docs: 100
 validation_workers: 16
+
+# Batch size to generate query embeddings
 batch_size: 128
+
+# Whether to lower case the input text. Set True for uncased models, False for the cased ones.
 do_lower_case: True
-save_or_load_index: False
+
+# path to the FAISS index location - it is only needed if you want to serialize faiss index to files or read from them
+# (instead of using encoded_ctx_files)
+# it should point to either directory or a common index files prefix name
+# if there is no index at the specific location, the index will be created from encoded_ctx_files
+index_path:
+
 kilt_out_file:
+
+# A trained bi-encoder checkpoint file to initialize the model
 model_file:
+
 validate_as_tables: False
 rpc_retriever_cfg_file:
 indexer: flat
@@ -42,7 +55,8 @@ special_tokens:
   - '[END_ENT]'
   - '[D]'
 
-# TODO: move to a sub conf
+# TODO: move to a conf group
+# local_rank for distributed training on gpus
 local_rank: -1
 global_loss_buf_sz: 150000
 device:
@@ -50,6 +64,7 @@ distributed_world_size:
 no_cuda: False
 n_gpu:
 fp16: False
-fp16_opt_level: O1
 
-encoder_type: question
+# For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
+#        "See details at https://nvidia.github.io/apex/amp.html
+fp16_opt_level: O1

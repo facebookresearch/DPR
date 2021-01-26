@@ -139,40 +139,30 @@ class JsonQADataset(Dataset):
         json_sample = self.data[index]
         r = BiEncoderSample()
         r.query = self._process_query(json_sample["question"])
-        r.positive_passages = [
-            BiEncoderPassage(ctx["text"], ctx["title"])
-            for ctx in json_sample["positive_ctxs"]
-        ]
-        r.negative_passages = (
-            [
-                BiEncoderPassage(ctx["text"], ctx["title"])
-                for ctx in json_sample["negative_ctxs"]
-            ]
-            if "negative_ctxs" in json_sample
+
+        positive_ctxs = json_sample["positive_ctxs"]
+        negative_ctxs = (
+            json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
+        )
+        hard_negative_ctxs = (
+            json_sample["hard_negative_ctxs"]
+            if "hard_negative_ctxs" in json_sample
             else []
         )
-        if "hard_negative_ctxs" in json_sample:
-            r.hard_negative_passages = [
-                BiEncoderPassage(ctx["text"], ctx["title"])
-                for ctx in json_sample["hard_negative_ctxs"]
-            ]
-        else:
-            r.hard_negative_passages = []
 
-        # tmp experiment
-        if self.normalize:
-            r.positive_passages = [
-                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
-                for p in r.positive_passages
-            ]
-            r.negative_passages = [
-                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
-                for p in r.negative_passages
-            ]
-            r.hard_negative_passages = [
-                BiEncoderPassage(normalize_kilt_passage(p.text), p.title)
-                for p in r.hard_negative_passages
-            ]
+        for ctx in positive_ctxs + negative_ctxs + hard_negative_ctxs:
+            if "title" not in ctx:
+                ctx["title"] = None
+
+        def create_passage(ctx: dict):
+            return BiEncoderPassage(
+                normalize_passage(ctx["text"]) if self.normalize else ctx["text"],
+                ctx["title"],
+            )
+
+        r.positive_passages = [create_passage(ctx) for ctx in positive_ctxs]
+        r.negative_passages = [create_passage(ctx) for ctx in negative_ctxs]
+        r.hard_negative_passages = [create_passage(ctx) for ctx in hard_negative_ctxs]
         return r
 
     def __len__(self):
@@ -256,6 +246,7 @@ class JsonLTablesQADataset(Dataset):
             "type1": JsonLTablesQADataset._linearize_table,
             "type2": JsonLTablesQADataset._linearize_table2,
             "type3": JsonLTablesQADataset._linearize_table3,
+            "type4": JsonLTablesQADataset._linearize_table4,
         }
         return f[split_type]
 
@@ -290,16 +281,13 @@ class JsonLTablesQADataset(Dataset):
                 chunks.append(linearized_str)
                 current_rows = [header]
                 current_len = header_len
-                # logger.info('!!! chunk %s', linearized_str)
 
         if len(current_rows) > 1:
             linearized_str = "\n".join(current_rows) + "\n"
             chunks.append(linearized_str)
-            # logger.info('!!! chunk %s', linearized_str)
         return chunks
 
     @classmethod
-    # tmp
     def split_table3(cls, t: dict, max_length: int):
         rows = t["rows"]
         chunks = []
@@ -335,8 +323,6 @@ class JsonLTablesQADataset(Dataset):
                 header_id = i
                 break
 
-        # logger.info("!!! table %s", t)
-
         chunks = []
         current_rows = []
         current_len = 0
@@ -353,12 +339,10 @@ class JsonLTablesQADataset(Dataset):
                 chunks.append(linearized_str)
                 current_rows = []
                 current_len = 0
-                # logger.info("!!! chunk %s", linearized_str)
 
         if len(current_rows) > 1:
             linearized_str = "\n".join(current_rows) + "\n"
             chunks.append(linearized_str)
-            # logger.info("!!! chunk %s", linearized_str)
 
         if len(chunks) == 0:
             row = rows[header_id]
@@ -368,7 +352,7 @@ class JsonLTablesQADataset(Dataset):
             chunks.append(row_lin)
         return chunks
 
-    def _linearize_table(self, t: dict, is_positive: bool) -> List[str]:
+    def _linearize_table(self, t: dict, is_positive: bool) -> str:
         rows = t["rows"]
         selected_rows = set()
         rows_linearized = []
@@ -419,13 +403,9 @@ class JsonLTablesQADataset(Dataset):
         for r in rows_linearized:
             linearized_str += r + "\n"
 
-        # logger.info('!!! selected_rows %s', selected_rows)
-        # logger.info('!!! total_words_len %s', total_words_len)
-        # logger.info('!!! positive linearized_str %s', linearized_str)
-
         return linearized_str
 
-    def _linearize_table3(self, t: dict, is_positive: bool) -> List[str]:
+    def _linearize_table3(self, t: dict, is_positive: bool) -> str:
         rows = t["rows"]
         selected_rows = set()
         rows_linearized = []
@@ -469,13 +449,11 @@ class JsonLTablesQADataset(Dataset):
 
         return linearized_str
 
-    def _linearize_table2(self, t: dict, is_positive: bool) -> List[str]:
+    def _linearize_table2(self, t: dict, is_positive: bool) -> str:
         rows = t["rows"]
         selected_rows = set()
         rows_linearized = []
         total_words_len = 0
-
-        # logger.info("!!! table %s", t)
 
         # get the first non empty row as the "header"
 
@@ -525,11 +503,75 @@ class JsonLTablesQADataset(Dataset):
         for r in rows_linearized:
             linearized_str += r + "\n"
 
-        # logger.info("!!! selected_rows %s", selected_rows)
-        # logger.info("!!! total_words_len %s", total_words_len)
-        # logger.info("!!! positive linearized_str %s", linearized_str)
-
         return linearized_str
+
+    def _linearize_table4(self, t: dict, is_positive: bool) -> str:
+        rows = t["rows"]
+        header_row = -1
+        header_len = 0
+        header = None
+
+        # get the first non empty row as the "header"
+        for i, r in enumerate(rows):
+            row_lin, row_len = JsonLTablesQADataset._linearize_row(r)
+            if len(row_lin) > 1:  # TODO: change to checking cell value tokens
+                header_row = i
+                header = row_lin
+                header_len = row_len
+                break
+
+        start_row = header_row + 1
+        chunks = []
+        positive_chunks = []
+
+        current_rows = [header]
+        current_len = header_len
+        has_answer = False
+
+        if is_positive:
+            row_idx_with_answers = set([ap[0] for ap in t["answer_pos"]])
+        else:
+            row_idx_with_answers = set()
+
+        for i in range(start_row, len(rows)):
+            row_lin, row_len = JsonLTablesQADataset._linearize_row(rows[i])
+            if len(row_lin) > 1:
+                current_rows.append(row_lin)
+                current_len += row_len
+                if i in row_idx_with_answers:
+                    has_answer = True
+            if current_len >= self.max_len:
+                # linearize chunk
+                linearized_str = "\n".join(current_rows) + "\n"
+                if has_answer:
+                    positive_chunks.append(linearized_str)
+                else:
+                    chunks.append(linearized_str)
+                current_rows = [header]
+                current_len = header_len
+                has_answer = False
+
+        if len(current_rows) > 1:
+            linearized_str = "\n".join(current_rows) + "\n"
+            if has_answer:
+                positive_chunks.append(linearized_str)
+            else:
+                chunks.append(linearized_str)
+
+        if is_positive and not positive_chunks:
+            return self._linearize_table(t, is_positive)
+
+        if is_positive:
+            return (
+                self.rnd.choice(positive_chunks)
+                if self.shuffle_positives
+                else positive_chunks[0]
+            )
+        else:
+            if self.is_train_set:
+                return self.rnd.choice(chunks)
+            else:
+                return chunks[0]
 
     @classmethod
     def _linearize_row(cls, row: dict) -> Tuple[str, int]:
@@ -562,10 +604,17 @@ class TRECDataset(Dataset):
         passages_filename: str,
         queries_filename: str,
         qrels_filename: str,
-        selector: DictConfig,
+        selector: DictConfig = None,
         special_token: str = None,
+        shuffle_positives: bool = False,
+        query_special_suffix: str = None,
     ):
-        super().__init__(selector, special_token=special_token)
+        super().__init__(
+            selector=selector,
+            special_token=special_token,
+            shuffle_positives=shuffle_positives,
+            query_special_suffix=query_special_suffix,
+        )
         self.passages_file = os.path.join(data_dir, passages_filename)
         self.queries_file = os.path.join(data_dir, queries_filename)
         self.qidpidtriples_file = os.path.join(data_dir, qrels_filename)
@@ -674,7 +723,7 @@ def split_tables_to_chunks(
     return chunks
 
 
-def normalize_kilt_passage(ctx_text: str):
+def normalize_passage(ctx_text: str):
     ctx_text = ctx_text.replace("\n", " ").replace("’", "'")
     return ctx_text
 

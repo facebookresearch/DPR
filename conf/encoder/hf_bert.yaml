@@ -1,9 +1,22 @@
-encoder:
-  encoder_model_type: hf_bert
-  pretrained_model_cfg: bert-base-uncased
-  pretrained_file:
-  model_file:
-  projection_dim: 0
-  sequence_length: 256
-  dropout: 0.1
-  fix_ctx_encoder: False
+# @package _group_
+
+# model type. One of [hf_bert, pytext_bert, fairseq_roberta]
+encoder_model_type: hf_bert
+
+# HuggingFace's config name for model initialization
+pretrained_model_cfg: bert-base-uncased
+
+# Some encoders need to be initialized from a file
+pretrained_file:
+
+# Extra linear layer on top of standard bert/roberta encoder
+projection_dim: 0
+
+# Max length of the encoder input sequence
+sequence_length: 256
+
+dropout: 0.1
+fix_ctx_encoder: False
+
+# if False, the model won't load pre-trained BERT weights
+pretrained: True

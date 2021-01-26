@@ -1,38 +1,51 @@
-ctx_sources:
-  dpr_wiki:
-    _target_: dpr.data.retriever_data.CsvCtxSrc
-    file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
-    id_prefix: 'wiki:'
+# @package _group_
 
-  nq_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /checkpoint/vladk/datasets/tables/nq_all.tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'nqt:'
+dpr_wiki:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
+  id_prefix: 'wiki:'
 
-  nq_train_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /checkpoint/vladk/datasets/tables/nq_train.tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'nqt:'
+nq_tables:
+  _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+  file: /checkpoint/vladk/datasets/tables/nq_all.tables.jsonl
+  tables_chunk_sz: 100
+  id_prefix: 'nqt:'
+  split_type: type1
 
-  kilt_wiki:
-    _target_: dpr.data.retriever_data.KiltCsvCtxSrc
-    file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
+nq_train_tables:
+  _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+  file: /checkpoint/vladk/datasets/tables/nq_train.tables.jsonl
+  tables_chunk_sz: 100
+  id_prefix: 'nqt:'
 
-  wiki_tables:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'wt:'
+kilt_wiki:
+  _target_: dpr.data.retriever_data.KiltCsvCtxSrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
 
-  wiki_with_lists:
-    _target_: dpr.data.retriever_data.CsvCtxSrc
-    file: /private/home/barlaso/data/wikipedia/passages_with_lists_w100.tsv
-    id_prefix: 'wikil:'
+wiki_tables:
+  _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+  file: /private/home/barlaso/data/wikipedia/tables/wiki_tables.jsonl
+  tables_chunk_sz: 100
+  id_prefix: 'wt:'
 
-  wiki_info_boxes:
-    _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
-    file: /private/home/barlaso/data/wikipedia/wiki.infoboxes.20181220.dump.jsonl
-    tables_chunk_sz: 100
-    id_prefix: 'wib:'
+wiki_with_lists:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /private/home/barlaso/data/wikipedia/passages_with_lists_w100.tsv
+  id_prefix: 'wikil:'
+
+wiki_info_boxes:
+  _target_: dpr.data.retriever_data.JsonlTablesCtxSrc
+  file: /private/home/barlaso/data/wikipedia/wiki.infoboxes.20181220.dump.jsonl
+  tables_chunk_sz: 100
+  id_prefix: 'wib:'
+
+wiki_with_overlaps:
+  _target_: dpr.data.retriever_data.OverlappedPassagesCtxSrc
+  file: /private/home/egrave/efficientqa/data/wiki2018/passages_filter_overlap_list_all.tsv
+  id_prefix: 'w_olp:'
+
+wiki_with_overlaps_filtered:
+  _target_: dpr.data.retriever_data.OverlappedPassagesCtxSrc
+  file: /private/home/egrave/efficientqa/data/wiki2018/passages_filter_overlap_list.tsv
+  id_prefix: 'w_olp_f:'
+

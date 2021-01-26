@@ -20,6 +20,10 @@ datasets:
     file: /private/home/vladk/src/natural-questions/nq_open/NQ-open.efficientqa.dev.1.1.jsonl
     answers_attr: answer
 
+  nq_new_test:
+    _target_: dpr.data.retriever_data.JsonlQASrc
+    file: /private/home/vladk/src/testdata/NQ-open.efficientqa.test.1.1.no-annotations.jsonl
+
   nq_dev_kilt:
     _target_: dpr.data.retriever_data.KiltCsvQASrc
     file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.tsv
@@ -63,6 +67,19 @@ datasets:
   curatedtrec_train:
     _target_: dpr.data.retriever_data.CsvQASrc
     file: /private/home/scottyih/playground/bert-qa/data/curatedtrec-train.qa.csv
+
+  webquestions_test:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/webquestions-test.qa.csv
+
+  webquestions_dev:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/webquestions-dev.qa.csv
+
+  webquestions_train:
+    _target_: dpr.data.retriever_data.CsvQASrc
+    file: /private/home/scottyih/playground/bert-qa/data/webquestions-train.qa.csv
+
 
   trivia_test_kilt:
     _target_: dpr.data.retriever_data.KiltCsvQASrc
@@ -123,3 +140,11 @@ datasets:
   music_test:
     _target_: dpr.data.retriever_data.MusicCsvQASrc
     file: /private/home/xilun/hybridqa/musicqa/split/musicqa_test.tsv
+
+  tabfact_train_1:
+    _target_: dpr.data.retriever_data.TabFactJsonQASrc
+    file: /checkpoint/michaelsch/vladimir/tabfact_data/r1_training_all.json
+
+  tabfact_train_2:
+    _target_: dpr.data.retriever_data.TabFactJsonQASrc
+    file: /checkpoint/michaelsch/vladimir/tabfact_data/r2_training_all.json
