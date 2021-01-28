@@ -26,6 +26,8 @@ from torch import Tensor as T
 from torch import nn
 
 from distributed_faiss.client import IndexClient
+from distributed_faiss.index_cfg import IndexCfg
+from distributed_faiss.index_state import IndexState
 from dpr.data.biencoder_data import split_tables_to_chunks, RepTokenSelector
 from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches
 from dpr.data.retriever_data import TableChunk, KiltCsvCtxSrc
@@ -203,8 +205,11 @@ class DenseRPCRetriever(DenseRetriever):
         batch_size: int,
         tensorizer: Tensorizer,
         index_cfg_path: str,
+        dim: int,
     ):
         super().__init__(question_encoder, batch_size, tensorizer)
+        self.dim = dim
+        self.index_id = "dr"
         logger.info("Connecting to index server ...")
         self.index_client = IndexClient(index_cfg_path)
         logger.info("Connected")
@@ -222,6 +227,13 @@ class DenseRPCRetriever(DenseRetriever):
         :return:
         """
         buffer = []
+        idx_cfg = IndexCfg()
+
+        idx_cfg.dim = self.dim
+        logger.info("Index train num=%d", idx_cfg.train_num)
+        idx_cfg.faiss_factory = "flat"
+        index_id = self.index_id
+        self.index_client.create_index(index_id, idx_cfg)
 
         def send_buf_data(buffer, index_client):
             buffer_vectors = [
@@ -229,7 +241,7 @@ class DenseRPCRetriever(DenseRetriever):
             ]
             buffer_vectors = np.concatenate(buffer_vectors, axis=0)
             meta = [encoded_item[0] for encoded_item in buffer]
-            index_client.add_index_data("default", buffer_vectors, meta)
+            index_client.add_index_data(index_id, buffer_vectors, meta)
 
         for i, item in enumerate(
             iterate_encoded_files(vector_files, path_id_prefixes=path_id_prefixes)
@@ -241,8 +253,7 @@ class DenseRPCRetriever(DenseRetriever):
         if buffer:
             send_buf_data(buffer, self.index_client)
         logger.info("Embeddings sent.")
-        self.index_client.sync_train()
-        logger.info("Remote index train completed")
+        self._wait_index_ready(index_id)
 
     def get_top_docs(
         self, query_vectors: np.array, top_docs: int = 100, search_batch: int = 512
@@ -258,10 +269,19 @@ class DenseRPCRetriever(DenseRetriever):
             time0 = time.time()
             query_batch = query_vectors[i : i + search_batch]
             logger.info("query_batch: %s", query_batch.shape)
-            scores, ids = self.index_client.search(query_batch, top_docs, "default")
+            scores, ids = self.index_client.search(query_batch, top_docs, self.index_id)
             logger.info("index search time: %f sec.", time.time() - time0)
             results.extend([(ids[q], scores[q]) for q in range(len(scores))])
         return results
+
+    def _wait_index_ready(self, index_id: str):
+        # TODO: move this method into IndexClient class
+        while self.index_client.get_state(index_id) != IndexState.TRAINED:
+            time.sleep(10)
+        logger.info(
+            "Remote Index is ready. Index data size %d",
+            self.index_client.get_ntotal(index_id),
+        )
 
 
 def validate(
@@ -470,7 +490,7 @@ def main(cfg: DictConfig):
     if cfg.rpc_retriever_cfg_file:
         index_buffer_sz = 1000
         retriever = DenseRPCRetriever(
-            encoder, cfg.batch_size, tensorizer, cfg.rpc_retriever_cfg_file
+            encoder, cfg.batch_size, tensorizer, cfg.rpc_retriever_cfg_file, vector_size
         )
     else:  # local index retriever
         index = hydra.utils.instantiate(cfg.indexers[cfg.indexer])

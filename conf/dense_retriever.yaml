@@ -32,6 +32,10 @@ batch_size: 128
 # Whether to lower case the input text. Set True for uncased models, False for the cased ones.
 do_lower_case: True
 
+# The attribute name of encoder to use for queries. Options for the BiEncoder model: question_model, ctx_model
+# question_model is used if this param is empty
+encoder_path:
+
 # path to the FAISS index location - it is only needed if you want to serialize faiss index to files or read from them
 # (instead of using encoded_ctx_files)
 # it should point to either directory or a common index files prefix name
