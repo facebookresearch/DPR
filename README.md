@@ -122,6 +122,7 @@ python generate_dense_embeddings.py \
 	--out_file ${out files location + name PREFX}
 ```
 Note: you can use much large batch size here compared to training mode. For example, setting --batch_size 128 for 2 GPU(16gb) server should work fine.
+You can download already generated wikipedia embeddings (trained on NQ dataset) using resource key 'data.retriever_results.nq.single.wikipedia_passages'.
 
 ## Retriever validation against the entire set of documents:
 
@@ -247,8 +248,8 @@ python -m torch.distributed.launch \
 	--warmup_steps 1237 \
 	--batch_size 16 \
 	--do_lower_case \
-	--train_file "{glob expression to train files for 'data.retriever.nq' resource}" \
-	--dev_file {path to downloaded data.retriever.qas.nq-dev resource} \
+	--train_file "{glob expression to train files downloaded as 'data.retriever.nq-train' resource}" \
+	--dev_file "{glob expression to dev files downloaded as 'data.retriever.nq-dev' resource}" \
 	--output_dir {your output dir} \
 	--learning_rate 2e-05 \
 	--num_train_epochs 40 \
@@ -307,8 +308,8 @@ Our best results were achieved on 16-18 training epochs or after ~60k model upda
 We provide all input and intermediate results for e2e pipeline for NQ dataset and most of the similar resources for Trivia.
 
 ## Misc.
-- TREC validation requires regexp based matching. We support only retriever validation in regexp mode. See --math parameter options.
-- WEbQ validation requires entity normalization, which is not included as of now.
+- TREC validation requires regexp based matching. We support only retriever validation in the regexp mode. See --match parameter option.
+- WebQ validation requires entity normalization, which is not included as of now.
 
 ## Reference
 

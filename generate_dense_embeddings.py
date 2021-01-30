@@ -148,7 +148,7 @@ def main(args):
 
     data = gen_ctx_vectors(rows, encoder, tensorizer, True)
 
-    file = args.out_file + "_" + str(args.shard_id)
+    file = args.out_file + "_" + str(args.shard_id) + ".pkl"
     pathlib.Path(os.path.dirname(file)).mkdir(parents=True, exist_ok=True)
     logger.info("Writing results to %s" % file)
     with open(file, mode="wb") as f:
