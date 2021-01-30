@@ -23,12 +23,18 @@ from dpr.utils.tokenizers import SimpleTokenizer
 
 logger = logging.getLogger(__name__)
 
-QAMatchStats = collections.namedtuple('QAMatchStats', ['top_k_hits', 'questions_doc_hits'])
+QAMatchStats = collections.namedtuple(
+    "QAMatchStats", ["top_k_hits", "questions_doc_hits"]
+)
 
 
-def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[List[str]],
-                      closest_docs: List[Tuple[List[object], List[float]]], workers_num: int,
-                      match_type: str) -> QAMatchStats:
+def calculate_matches(
+    all_docs: Dict[object, Tuple[str, str]],
+    answers: List[List[str]],
+    closest_docs: List[Tuple[List[object], List[float]]],
+    workers_num: int,
+    match_type: str,
+) -> QAMatchStats:
     """
     Evaluates answers presence in the set of documents. This function is supposed to be used with a large collection of
     documents and results. It internally forks multiple sub-processes for evaluation and then merges results
@@ -52,15 +58,17 @@ def calculate_matches(all_docs: Dict[object, Tuple[str, str]], answers: List[Lis
         processes=workers_num,
     )
 
-    logger.info('Matching answers in top docs...')
+    logger.info("Matching answers in top docs...")
 
-    get_score_partial = partial(check_answer, match_type=match_type, tokenizer=tokenizer)
+    get_score_partial = partial(
+        check_answer, match_type=match_type, tokenizer=tokenizer
+    )
 
     questions_answers_docs = zip(answers, closest_docs)
 
     scores = processes.map(get_score_partial, questions_answers_docs)
 
-    logger.info('Per question validation results len=%d', len(scores))
+    logger.info("Per question validation results len=%d", len(scores))
 
     n_docs = len(closest_docs[0][0])
     top_k_hits = [0] * n_docs
@@ -102,7 +110,7 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
     """
     text = _normalize(text)
 
-    if match_type == 'string':
+    if match_type == "string":
         # Answer is a list of possible strings
         text = tokenizer.tokenize(text).words(uncased=True)
 
@@ -112,10 +120,10 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
             single_answer = single_answer.words(uncased=True)
 
             for i in range(0, len(text) - len(single_answer) + 1):
-                if single_answer == text[i: i + len(single_answer)]:
+                if single_answer == text[i : i + len(single_answer)]:
                     return True
 
-    elif match_type == 'regex':
+    elif match_type == "regex":
         # Answer is a regex
         for single_answer in answers:
             single_answer = _normalize(single_answer)
@@ -143,14 +151,14 @@ def exact_match_score(prediction, ground_truth):
 
 def _normalize_answer(s):
     def remove_articles(text):
-        return re.sub(r'\b(a|an|the)\b', ' ', text)
+        return re.sub(r"\b(a|an|the)\b", " ", text)
 
     def white_space_fix(text):
-        return ' '.join(text.split())
+        return " ".join(text.split())
 
     def remove_punc(text):
         exclude = set(string.punctuation)
-        return ''.join(ch for ch in text if ch not in exclude)
+        return "".join(ch for ch in text if ch not in exclude)
 
     def lower(text):
         return text.lower()
@@ -159,4 +167,4 @@ def _normalize_answer(s):
 
 
 def _normalize(text):
-    return unicodedata.normalize('NFD', text)
+    return unicodedata.normalize("NFD", text)

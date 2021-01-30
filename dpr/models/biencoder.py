@@ -25,9 +25,17 @@ from dpr.utils.data_utils import normalize_question
 
 logger = logging.getLogger(__name__)
 
-BiEncoderBatch = collections.namedtuple('BiENcoderInput',
-                                        ['question_ids', 'question_segments', 'context_ids', 'ctx_segments',
-                                         'is_positive', 'hard_negatives'])
+BiEncoderBatch = collections.namedtuple(
+    "BiENcoderInput",
+    [
+        "question_ids",
+        "question_segments",
+        "context_ids",
+        "ctx_segments",
+        "is_positive",
+        "hard_negatives",
+    ],
+)
 
 
 def dot_product_scores(q_vectors: T, ctx_vectors: T) -> T:
@@ -48,11 +56,15 @@ def cosine_scores(q_vector: T, ctx_vectors: T):
 
 
 class BiEncoder(nn.Module):
-    """ Bi-Encoder model component. Encapsulates query/question and context/passage encoders.
-    """
+    """Bi-Encoder model component. Encapsulates query/question and context/passage encoders."""
 
-    def __init__(self, question_model: nn.Module, ctx_model: nn.Module, fix_q_encoder: bool = False,
-                 fix_ctx_encoder: bool = False):
+    def __init__(
+        self,
+        question_model: nn.Module,
+        ctx_model: nn.Module,
+        fix_q_encoder: bool = False,
+        fix_ctx_encoder: bool = False,
+    ):
         super(BiEncoder, self).__init__()
         self.question_model = question_model
         self.ctx_model = ctx_model
@@ -60,44 +72,71 @@ class BiEncoder(nn.Module):
         self.fix_ctx_encoder = fix_ctx_encoder
 
     @staticmethod
-    def get_representation(sub_model: nn.Module, ids: T, segments: T, attn_mask: T, fix_encoder: bool = False) -> (
-    T, T, T):
+    def get_representation(
+        sub_model: nn.Module,
+        ids: T,
+        segments: T,
+        attn_mask: T,
+        fix_encoder: bool = False,
+    ) -> (T, T, T):
         sequence_output = None
         pooled_output = None
         hidden_states = None
         if ids is not None:
             if fix_encoder:
                 with torch.no_grad():
-                    sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask)
+                    sequence_output, pooled_output, hidden_states = sub_model(
+                        ids, segments, attn_mask
+                    )
 
                 if sub_model.training:
                     sequence_output.requires_grad_(requires_grad=True)
                     pooled_output.requires_grad_(requires_grad=True)
             else:
-                sequence_output, pooled_output, hidden_states = sub_model(ids, segments, attn_mask)
+                sequence_output, pooled_output, hidden_states = sub_model(
+                    ids, segments, attn_mask
+                )
 
         return sequence_output, pooled_output, hidden_states
 
-    def forward(self, question_ids: T, question_segments: T, question_attn_mask: T, context_ids: T, ctx_segments: T,
-                ctx_attn_mask: T) -> Tuple[T, T]:
+    def forward(
+        self,
+        question_ids: T,
+        question_segments: T,
+        question_attn_mask: T,
+        context_ids: T,
+        ctx_segments: T,
+        ctx_attn_mask: T,
+    ) -> Tuple[T, T]:
 
-        _q_seq, q_pooled_out, _q_hidden = self.get_representation(self.question_model, question_ids, question_segments,
-                                                                  question_attn_mask, self.fix_q_encoder)
-        _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(self.ctx_model, context_ids, ctx_segments,
-                                                                        ctx_attn_mask, self.fix_ctx_encoder)
+        _q_seq, q_pooled_out, _q_hidden = self.get_representation(
+            self.question_model,
+            question_ids,
+            question_segments,
+            question_attn_mask,
+            self.fix_q_encoder,
+        )
+        _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(
+            self.ctx_model,
+            context_ids,
+            ctx_segments,
+            ctx_attn_mask,
+            self.fix_ctx_encoder,
+        )
 
         return q_pooled_out, ctx_pooled_out
 
     @classmethod
-    def create_biencoder_input(cls,
-                               samples: List,
-                               tensorizer: Tensorizer,
-                               insert_title: bool,
-                               num_hard_negatives: int = 0,
-                               num_other_negatives: int = 0,
-                               shuffle: bool = True,
-                               shuffle_positives: bool = False,
-                               ) -> BiEncoderBatch:
+    def create_biencoder_input(
+        cls,
+        samples: List,
+        tensorizer: Tensorizer,
+        insert_title: bool,
+        num_hard_negatives: int = 0,
+        num_other_negatives: int = 0,
+        shuffle: bool = True,
+        shuffle_positives: bool = False,
+    ) -> BiEncoderBatch:
         """
         Creates a batch of the biencoder training tuple.
         :param samples: list of data items (from json) to create the batch for
@@ -118,14 +157,14 @@ class BiEncoder(nn.Module):
             # ctx+ & [ctx-] composition
             # as of now, take the first(gold) ctx+ only
             if shuffle and shuffle_positives:
-                positive_ctxs = sample['positive_ctxs']
+                positive_ctxs = sample["positive_ctxs"]
                 positive_ctx = positive_ctxs[np.random.choice(len(positive_ctxs))]
             else:
-                positive_ctx = sample['positive_ctxs'][0]
+                positive_ctx = sample["positive_ctxs"][0]
 
-            neg_ctxs = sample['negative_ctxs']
-            hard_neg_ctxs = sample['hard_negative_ctxs']
-            question = normalize_question(sample['question'])
+            neg_ctxs = sample["negative_ctxs"]
+            hard_neg_ctxs = sample["hard_negative_ctxs"]
+            question = normalize_question(sample["question"])
 
             if shuffle:
                 random.shuffle(neg_ctxs)
@@ -140,15 +179,24 @@ class BiEncoder(nn.Module):
 
             current_ctxs_len = len(ctx_tensors)
 
-            sample_ctxs_tensors = [tensorizer.text_to_tensor(ctx['text'], title=ctx['title'] if insert_title else None)
-                                   for
-                                   ctx in all_ctxs]
+            sample_ctxs_tensors = [
+                tensorizer.text_to_tensor(
+                    ctx["text"], title=ctx["title"] if insert_title else None
+                )
+                for ctx in all_ctxs
+            ]
 
             ctx_tensors.extend(sample_ctxs_tensors)
             positive_ctx_indices.append(current_ctxs_len)
             hard_neg_ctx_indices.append(
-                [i for i in
-                 range(current_ctxs_len + hard_negatives_start_idx, current_ctxs_len + hard_negatives_end_idx)])
+                [
+                    i
+                    for i in range(
+                        current_ctxs_len + hard_negatives_start_idx,
+                        current_ctxs_len + hard_negatives_end_idx,
+                    )
+                ]
+            )
 
             question_tensors.append(tensorizer.text_to_tensor(question))
 
@@ -158,14 +206,24 @@ class BiEncoder(nn.Module):
         ctx_segments = torch.zeros_like(ctxs_tensor)
         question_segments = torch.zeros_like(questions_tensor)
 
-        return BiEncoderBatch(questions_tensor, question_segments, ctxs_tensor, ctx_segments, positive_ctx_indices,
-                              hard_neg_ctx_indices)
+        return BiEncoderBatch(
+            questions_tensor,
+            question_segments,
+            ctxs_tensor,
+            ctx_segments,
+            positive_ctx_indices,
+            hard_neg_ctx_indices,
+        )
 
 
 class BiEncoderNllLoss(object):
-
-    def calc(self, q_vectors: T, ctx_vectors: T, positive_idx_per_question: list,
-             hard_negatice_idx_per_question: list = None) -> Tuple[T, int]:
+    def calc(
+        self,
+        q_vectors: T,
+        ctx_vectors: T,
+        positive_idx_per_question: list,
+        hard_negatice_idx_per_question: list = None,
+    ) -> Tuple[T, int]:
         """
         Computes nll loss for the given lists of question and ctx vectors.
         Note that although hard_negatice_idx_per_question in not currently in use, one can use it for the
@@ -180,11 +238,16 @@ class BiEncoderNllLoss(object):
 
         softmax_scores = F.log_softmax(scores, dim=1)
 
-        loss = F.nll_loss(softmax_scores, torch.tensor(positive_idx_per_question).to(softmax_scores.device),
-                          reduction='mean')
+        loss = F.nll_loss(
+            softmax_scores,
+            torch.tensor(positive_idx_per_question).to(softmax_scores.device),
+            reduction="mean",
+        )
 
         max_score, max_idxs = torch.max(softmax_scores, 1)
-        correct_predictions_count = (max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)).sum()
+        correct_predictions_count = (
+            max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)
+        ).sum()
         return loss, correct_predictions_count
 
     @staticmethod
