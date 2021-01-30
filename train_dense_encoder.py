@@ -70,7 +70,6 @@ class BiEncoderTrainer(object):
     and dense_retriever.py CLI tools.
     """
 
-    # TODO: switch to cfg
     def __init__(self, cfg: DictConfig):
         self.shard_id = cfg.local_rank if cfg.local_rank != -1 else 0
         self.distributed_factor = cfg.distributed_world_size or 1
@@ -634,7 +633,7 @@ class BiEncoderTrainer(object):
             self.start_batch = 0
         else:
             self.start_epoch = epoch
-            # TODO: doesn't work for multiset currently
+            # TODO: offset doesn't work for multiset currently
             self.start_batch = 0  # offset
 
         model_to_load = get_model_obj(self.biencoder)
@@ -830,7 +829,6 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-
     logger.info("Sys.argv: %s", sys.argv)
     hydra_formatted_args = []
     # convert the cli params added by torch.distributed.launch into Hydra format

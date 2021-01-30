@@ -107,10 +107,20 @@ class Dataset(torch.utils.data.Dataset):
         return query
 
 
+def _download_data(source_name) -> List[str]:
+    if os.path.exists(source_name) or glob.glob(source_name):
+        return glob.glob(source_name)
+    else:
+        # try to use data downloader
+        from dpr.data.download_data import download
+
+        return download(source_name)
+
+
 class JsonQADataset(Dataset):
     def __init__(
         self,
-        data_file_pattern: str,
+        file: str,
         selector: DictConfig = None,
         special_token: str = None,
         encoder_type: str = None,
@@ -125,11 +135,14 @@ class JsonQADataset(Dataset):
             shuffle_positives=shuffle_positives,
             query_special_suffix=query_special_suffix,
         )
-        self.data_files = glob.glob(data_file_pattern)
+        self.file = file
+        self.data_files = []
         self.data = []
         self.normalize = normalize
+        logger.info("Data files: %s", self.data_files)
 
     def load_data(self):
+        self.data_files = _download_data(self.file)
         data = read_data_from_json_files(self.data_files)
         # filter those without positive ctx
         self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
@@ -183,7 +196,7 @@ class JsonQADataset(Dataset):
 class JsonLTablesQADataset(Dataset):
     def __init__(
         self,
-        data_file_pattern: str,
+        file: str,
         is_train_set: bool,
         selector: DictConfig = None,
         shuffle_positives: bool = False,
@@ -193,7 +206,7 @@ class JsonLTablesQADataset(Dataset):
         split_type: str = "type1",
     ):
         super().__init__(selector, shuffle_positives=shuffle_positives)
-        self.data_files = glob.glob(data_file_pattern)
+        self.data_files = glob.glob(file)
         self.data = []
         self.is_train_set = is_train_set
         self.max_negatives = max_negatives
