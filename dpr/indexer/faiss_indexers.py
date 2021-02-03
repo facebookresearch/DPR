@@ -159,6 +159,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
             norms = (doc_vector ** 2).sum()
             phi = max(phi, norms)
         logger.info("HNSWF DotProduct -> L2 space phi={}".format(phi))
+        self.phi = phi
 
     def _index_batch(self, data: List[Tuple[object, np.array]]):
         # max norm is required before putting all vectors in the index to convert inner product similarity to L2
