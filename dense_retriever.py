@@ -146,7 +146,7 @@ class LocalFaissRetriever(DenseRetriever):
     def index_encoded_data(
         self,
         vector_files: List[str],
-        buffer_size: int = 50000,
+        buffer_size: int,
         path_id_prefixes: List = None,
     ):
         """
@@ -398,7 +398,7 @@ def main(cfg: DictConfig):
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
         retriever.index_encoded_data(
-            input_paths, buffer_size=index_buffer_sz, path_id_prefixes=path_id_prefixes
+            input_paths, index_buffer_sz, path_id_prefixes=path_id_prefixes
         )
         if index_path:
             retriever.index.serialize(index_path)

@@ -133,7 +133,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
 
     def __init__(
         self,
-        buffer_size: int = 50000,
+        buffer_size: int = 1e9,
         store_n: int = 512,
         ef_search: int = 128,
         ef_construction: int = 200,
@@ -152,7 +152,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         index.hnsw.efConstruction = self.ef_construction
         self.index = index
 
-    def index_data(self, data: List[Tuple[object, np.array]]):
+    def _index_data(self, data: List[Tuple[object, np.array]]):
         n = len(data)
 
         # max norm is required before putting all vectors in the index to convert inner product similarity to L2
@@ -167,10 +167,9 @@ class DenseHNSWFlatIndexer(DenseIndexer):
             norms = (doc_vector ** 2).sum()
             phi = max(phi, norms)
         logger.info("HNSWF DotProduct -> L2 space phi={}".format(phi))
-        self.phi = 0
+        self.phi = phi
 
         # indexing in batches is beneficial for many faiss index types
-
         bs = int(self.buffer_size)
         for i in range(0, n, bs):
             db_ids = [t[0] for t in data[i : i + bs]]
@@ -212,7 +211,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
 
     def deserialize(self, file: str):
         super(DenseHNSWFlatIndexer, self).deserialize(file)
-        # to trigger warning on subsequent indexing
+        # to trigger exception on subsequent indexing
         self.phi = 1
 
     def get_index_name(self):
