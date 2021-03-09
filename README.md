@@ -28,9 +28,9 @@ DPR codeabse is upgraded with a number of enhancements and new models.
 Major changes:
 1. [Hydra](https://hydra.cc/)-based configuration for all the command line tools exept the data loader (to be converted soon)
 2. Pluggable data processing layer to support custom datasets
-3. New retrieval model checkpoint with (much) better perfromance.
+3. New retrieval model checkpoint with better perfromance.
 
-### New (version=1.0.0) retrieval model
+## New (version=1.0.0) retrieval model
 A new retrieval trained on NQ dataset only and previous index is now provided: A new checkpoint, training data, retrieval results and soon to be provided embeddings.
 It is trained the original DPR NQ train set and its another version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
 Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data gives a nice retrieval performance boost.
