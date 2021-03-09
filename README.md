@@ -31,9 +31,9 @@ Major changes:
 3. New retrieval model checkpoint with better perfromance.
 
 ## New (version=1.0.0) retrieval model
-A new retrieval trained on NQ dataset only and previous index is now provided: A new checkpoint, training data, retrieval results and soon to be provided embeddings.
-It is trained the original DPR NQ train set and its another version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
-Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data gives a nice retrieval performance boost.
+A new retrieval trained on NQ dataset only (and previous DPR index) is now provided: a new checkpoint, training data, retrieval results and (soon to be provided) embeddings.
+It is trained on the original DPR NQ train set and its another version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
+Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data. This training scheme gives a nice retrieval performance boost.
 
 New vs old top-k documents retrieval accuracy on NQ test set (3610 questions).
 
