@@ -30,6 +30,25 @@ Major changes:
 2. Pluggable data processing layer to support custom datasets
 3. New retrieval model checkpoint with (much) better perfromance.
 
+### New (version=1.0.0) retrieval model
+A new retrieval trained on NQ dataset only and previous index is now provided: A new checkpoint, training data, retrieval results and soon to be provided embeddings.
+It is trained the original DPR NQ train set and its another version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
+Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data gives a nice retrieval performance boost.
+
+New vs old top-k documents retrieval accuracy on NQ test set (3610 questions).
+
+| Top-k passages        | Original DPR NQ model           | New DPR model  |
+| ------------- |:-------------:| -----:|
+| 1      | 45.87 | 52.47 |
+| 5      | 68.14      |   72.24 |
+| 20  | 79.97      |    81.33 |
+| 100  | 85.87      |    87.29 |
+
+New model downloadable resources names (see how to use download_data script below):
+Checkpoint: checkpoint.retriever.single-adv-hn.nq.bert-base-encoder
+New training data: data.retriever.nq-adv-hn-train
+Retriever resutls for NQ test set: data.retriever_results.nq.single-adv-hn.test
+
 
 ## Installation
 
@@ -269,7 +288,6 @@ python data/download_data.py --resource data.retriever.qas.nq
 We used distributed training mode on a single 8 GPU x 32 GB server
 
 ```bash
-
 python -m torch.distributed.launch --nproc_per_node=8
 train_dense_encoder.py \
 train=biencoder_nq \
@@ -278,6 +296,19 @@ dev_datasets=[nq_dev] \
 train=biencoder_nq \
 output_dir={your output dir}
 ```
+
+New model training combines two NQ datatsets:
+
+```bash
+python -m torch.distributed.launch --nproc_per_node=8
+train_dense_encoder.py \
+train=biencoder_nq \
+train_datasets=[nq_train,nq_train_hn1] \
+dev_datasets=[nq_dev] \
+train=biencoder_nq \
+output_dir={your output dir}
+```
+
 This takes about a day to complete the training for 40 epochs. It switches to Average Rank validation on epoch 30 and it should be around 25 or less at the end.
 The best checkpoint for bi-encoder is usually the last, but it should not be so different if you take any after epoch ~ 25.
 
