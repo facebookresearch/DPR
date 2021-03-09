@@ -10,37 +10,34 @@
  Pipeline to train DPR Biencoder
 """
 
-import argparse
-import glob
 import logging
 import math
 import os
 import random
+import sys
 import time
-
-
-import torch
-
 from typing import Tuple
-from torch import nn
+
+import hydra
+import torch
+from omegaconf import DictConfig, OmegaConf
 from torch import Tensor as T
+from torch import nn
 
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, BiEncoderNllLoss, BiEncoderBatch
 from dpr.options import (
-    add_encoder_params,
-    add_training_params,
-    setup_args_gpu,
+    setup_cfg_gpu,
     set_seed,
-    print_args,
-    get_encoder_params_state,
-    add_tokenizer_params,
-    set_encoder_params_from_state,
+    get_encoder_params_state_from_cfg,
+    set_cfg_params_from_state,
+    setup_logger,
 )
+from dpr.utils.conf_utils import BiencoderDatasetsCfg
 from dpr.utils.data_utils import (
     ShardedDataIterator,
-    read_data_from_json_files,
     Tensorizer,
+    MultiSetDataIterator,
 )
 from dpr.utils.dist_utils import all_gather_list
 from dpr.utils.model_utils import (
@@ -54,11 +51,7 @@ from dpr.utils.model_utils import (
 )
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-if logger.hasHandlers():
-    logger.handlers.clear()
-console = logging.StreamHandler()
-logger.addHandler(console)
+setup_logger(logger)
 
 
 class BiEncoderTrainer(object):
@@ -69,32 +62,31 @@ class BiEncoderTrainer(object):
     and dense_retriever.py CLI tools.
     """
 
-    def __init__(self, args):
-        self.args = args
-        self.shard_id = args.local_rank if args.local_rank != -1 else 0
-        self.distributed_factor = args.distributed_world_size or 1
+    def __init__(self, cfg: DictConfig):
+        self.shard_id = cfg.local_rank if cfg.local_rank != -1 else 0
+        self.distributed_factor = cfg.distributed_world_size or 1
 
         logger.info("***** Initializing components for training *****")
 
         # if model file is specified, encoder parameters from saved state should be used for initialization
-        model_file = get_model_file(self.args, self.args.checkpoint_file_name)
+        model_file = get_model_file(cfg, cfg.checkpoint_file_name)
         saved_state = None
         if model_file:
             saved_state = load_states_from_checkpoint(model_file)
-            set_encoder_params_from_state(saved_state.encoder_params, args)
+            set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
         tensorizer, model, optimizer = init_biencoder_components(
-            args.encoder_model_type, args
+            cfg.encoder.encoder_model_type, cfg
         )
 
         model, optimizer = setup_for_distributed_mode(
             model,
             optimizer,
-            args.device,
-            args.n_gpu,
-            args.local_rank,
-            args.fp16,
-            args.fp16_opt_level,
+            cfg.device,
+            cfg.n_gpu,
+            cfg.local_rank,
+            cfg.fp16,
+            cfg.fp16_opt_level,
         )
         self.biencoder = model
         self.optimizer = optimizer
@@ -104,95 +96,135 @@ class BiEncoderTrainer(object):
         self.scheduler_state = None
         self.best_validation_result = None
         self.best_cp_name = None
+        self.cfg = cfg
+        self.ds_cfg = BiencoderDatasetsCfg(cfg)
+
         if saved_state:
             self._load_saved_state(saved_state)
 
+        self.dev_iterator = None
+
     def get_data_iterator(
         self,
-        path: str,
         batch_size: int,
+        is_train_set: bool,
         shuffle=True,
         shuffle_seed: int = 0,
         offset: int = 0,
-        upsample_rates: list = None,
-    ) -> ShardedDataIterator:
-        data_files = glob.glob(path)
-        data = read_data_from_json_files(data_files, upsample_rates)
+        rank: int = 0,
+    ):
 
-        # filter those without positive ctx
-        data = [r for r in data if len(r["positive_ctxs"]) > 0]
-        logger.info("Total cleaned data size: {}".format(len(data)))
+        hydra_datasets = (
+            self.ds_cfg.train_datasets if is_train_set else self.ds_cfg.dev_datasets
+        )
+        sampling_rates = self.ds_cfg.sampling_rates
 
-        return ShardedDataIterator(
-            data,
-            shard_id=self.shard_id,
-            num_shards=self.distributed_factor,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            shuffle_seed=shuffle_seed,
-            offset=offset,
-            strict_batch_size=True,  # this is not really necessary, one can probably disable it
+        logger.info(
+            "Initializing task/set data %s",
+            self.ds_cfg.train_datasets_names
+            if is_train_set
+            else self.ds_cfg.dev_datasets_names,
         )
 
-    def run_train(
-        self,
-    ):
-        args = self.args
-        upsample_rates = None
-        if args.train_files_upsample_rates is not None:
-            upsample_rates = eval(args.train_files_upsample_rates)
+        # randomized data loading to avoid file system congestion
+        datasets_list = [ds for ds in hydra_datasets]
+        rnd = random.Random(rank)
+        rnd.shuffle(datasets_list)
+        [ds.load_data() for ds in datasets_list]
+
+        sharded_iterators = [
+            ShardedDataIterator(
+                ds,
+                shard_id=self.shard_id,
+                num_shards=self.distributed_factor,
+                batch_size=batch_size,
+                shuffle=shuffle,
+                shuffle_seed=shuffle_seed,
+                offset=offset,
+            )
+            for ds in hydra_datasets
+        ]
+
+        return MultiSetDataIterator(
+            sharded_iterators,
+            shuffle_seed,
+            shuffle,
+            sampling_rates=sampling_rates if is_train_set else [1],
+            rank=rank,
+        )
+
+    def run_train(self):
+        cfg = self.cfg
 
         train_iterator = self.get_data_iterator(
-            args.train_file,
-            args.batch_size,
+            cfg.train.batch_size,
+            True,
             shuffle=True,
-            shuffle_seed=args.seed,
+            shuffle_seed=cfg.seed,
             offset=self.start_batch,
-            upsample_rates=upsample_rates,
+            rank=cfg.local_rank,
+        )
+        max_iterations = train_iterator.get_max_iterations()
+        logger.info("  Total iterations per epoch=%d", max_iterations)
+        if max_iterations == 0:
+            logger.warning("No data found for training.")
+            return
+
+        updates_per_epoch = (
+            train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
         )
 
-        logger.info("  Total iterations per epoch=%d", train_iterator.max_iterations)
-        updates_per_epoch = (
-            train_iterator.max_iterations // args.gradient_accumulation_steps
-        )
-        total_updates = (
-            max(updates_per_epoch * (args.num_train_epochs - self.start_epoch - 1), 0)
-            + (train_iterator.max_iterations - self.start_batch)
-            // args.gradient_accumulation_steps
-        )
+        total_updates = updates_per_epoch * cfg.train.num_train_epochs
         logger.info(" Total updates=%d", total_updates)
-        warmup_steps = args.warmup_steps
-        scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
+        warmup_steps = cfg.train.warmup_steps
 
         if self.scheduler_state:
-            logger.info("Loading scheduler state %s", self.scheduler_state)
-            scheduler.load_state_dict(self.scheduler_state)
+            # TODO: ideally we'd want to just call
+            # scheduler.load_state_dict(self.scheduler_state)
+            # but it doesn't work properly as of now
 
-        eval_step = math.ceil(updates_per_epoch / args.eval_per_epoch)
+            logger.info("Loading scheduler state %s", self.scheduler_state)
+            shift = int(self.scheduler_state["last_epoch"])
+            logger.info("Steps shift %d", shift)
+            scheduler = get_schedule_linear(
+                self.optimizer,
+                warmup_steps,
+                total_updates,
+                steps_shift=shift,
+            )
+        else:
+            scheduler = get_schedule_linear(
+                self.optimizer, warmup_steps, total_updates, total_updates
+            )
+
+        eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
         logger.info("  Eval step = %d", eval_step)
         logger.info("***** Training *****")
 
-        for epoch in range(self.start_epoch, int(args.num_train_epochs)):
+        for epoch in range(self.start_epoch, int(cfg.train.num_train_epochs)):
             logger.info("***** Epoch %d *****", epoch)
             self._train_epoch(scheduler, epoch, eval_step, train_iterator)
 
-        if args.local_rank in [-1, 0]:
+        if cfg.local_rank in [-1, 0]:
             logger.info(
                 "Training finished. Best validation checkpoint %s", self.best_cp_name
             )
 
     def validate_and_save(self, epoch: int, iteration: int, scheduler):
-        args = self.args
+        cfg = self.cfg
         # for distributed mode, save checkpoint for only one process
-        save_cp = args.local_rank in [-1, 0]
+        save_cp = cfg.local_rank in [-1, 0]
 
-        if epoch == args.val_av_rank_start_epoch:
+        if epoch == cfg.val_av_rank_start_epoch:
             self.best_validation_result = None
 
-        if epoch >= args.val_av_rank_start_epoch:
-            validation_loss = self.validate_average_rank()
+        if not cfg.dev_datasets:
+            validation_loss = 0
         else:
-            validation_loss = self.validate_nll()
+            if epoch >= cfg.val_av_rank_start_epoch:
+                validation_loss = self.validate_average_rank()
+            else:
+                validation_loss = self.validate_nll()
 
         if save_cp:
             cp_name = self._save_checkpoint(scheduler, epoch, iteration)
@@ -205,21 +237,29 @@ class BiEncoderTrainer(object):
 
     def validate_nll(self) -> float:
         logger.info("NLL validation ...")
-        args = self.args
+        cfg = self.cfg
         self.biencoder.eval()
-        data_iterator = self.get_data_iterator(
-            args.dev_file, args.dev_batch_size, shuffle=False
-        )
+
+        if not self.dev_iterator:
+            self.dev_iterator = self.get_data_iterator(
+                cfg.train.dev_batch_size, False, shuffle=False, rank=cfg.local_rank
+            )
+        data_iterator = self.dev_iterator
 
         total_loss = 0.0
         start_time = time.time()
         total_correct_predictions = 0
-        num_hard_negatives = args.hard_negatives
-        num_other_negatives = args.other_negatives
-        log_result_step = args.log_batch_step
+        num_hard_negatives = cfg.train.hard_negatives
+        num_other_negatives = cfg.train.other_negatives
+        log_result_step = cfg.train.log_batch_step
         batches = 0
-        for i, samples_batch in enumerate(data_iterator.iterate_data()):
-            biencoder_input = BiEncoder.create_biencoder_input(
+        dataset = 0
+
+        for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
+            if isinstance(samples_batch, Tuple):
+                samples_batch, dataset = samples_batch
+            logger.info("Eval step: %d ,rnk=%s", i, cfg.local_rank)
+            biencoder_input = BiEncoder.create_biencoder_input2(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -228,8 +268,20 @@ class BiEncoderTrainer(object):
                 shuffle=False,
             )
 
+            # get the token to be used for representation selection
+            ds_cfg = self.ds_cfg.dev_datasets[dataset]
+            rep_positions = ds_cfg.selector.get_positions(
+                biencoder_input.question_ids, self.tensorizer
+            )
+            encoder_type = ds_cfg.encoder_type
+
             loss, correct_cnt = _do_biencoder_fwd_pass(
-                self.biencoder, biencoder_input, self.tensorizer, args
+                self.biencoder,
+                biencoder_input,
+                self.tensorizer,
+                cfg,
+                encoder_type=encoder_type,
+                rep_positions=rep_positions,
             )
             total_loss += loss.item()
             total_correct_predictions += correct_cnt
@@ -243,7 +295,7 @@ class BiEncoderTrainer(object):
                 )
 
         total_loss = total_loss / batches
-        total_samples = batches * args.dev_batch_size * self.distributed_factor
+        total_samples = batches * cfg.train.dev_batch_size * self.distributed_factor
         correct_ratio = float(total_correct_predictions / total_samples)
         logger.info(
             "NLL Validation: loss = %f. correct prediction ratio  %d/%d ~  %f",
@@ -266,31 +318,39 @@ class BiEncoderTrainer(object):
         """
         logger.info("Average rank validation ...")
 
-        args = self.args
+        cfg = self.cfg
         self.biencoder.eval()
         distributed_factor = self.distributed_factor
 
-        data_iterator = self.get_data_iterator(
-            args.dev_file, args.dev_batch_size, shuffle=False
-        )
+        if not self.dev_iterator:
+            self.dev_iterator = self.get_data_iterator(
+                cfg.train.dev_batch_size, False, shuffle=False, rank=cfg.local_rank
+            )
+        data_iterator = self.dev_iterator
 
-        sub_batch_size = args.val_av_rank_bsz
+        sub_batch_size = cfg.train.val_av_rank_bsz
         sim_score_f = BiEncoderNllLoss.get_similarity_function()
         q_represenations = []
         ctx_represenations = []
         positive_idx_per_question = []
 
-        num_hard_negatives = args.val_av_rank_hard_neg
-        num_other_negatives = args.val_av_rank_other_neg
+        num_hard_negatives = cfg.train.val_av_rank_hard_neg
+        num_other_negatives = cfg.train.val_av_rank_other_neg
 
-        log_result_step = args.log_batch_step
-
-        for i, samples_batch in enumerate(data_iterator.iterate_data()):
+        log_result_step = cfg.train.log_batch_step
+        dataset = 0
+        for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             # samples += 1
-            if len(q_represenations) > args.val_av_rank_max_qs / distributed_factor:
+            if (
+                len(q_represenations)
+                > cfg.train.val_av_rank_max_qs / distributed_factor
+            ):
                 break
 
-            biencoder_input = BiEncoder.create_biencoder_input(
+            if isinstance(samples_batch, Tuple):
+                samples_batch, dataset = samples_batch
+
+            biencoder_input = BiEncoder.create_biencoder_input2(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -303,6 +363,13 @@ class BiEncoderTrainer(object):
             ctxs_segments = biencoder_input.ctx_segments
             bsz = ctxs_ids.size(0)
 
+            # get the token to be used for representation selection
+            ds_cfg = self.ds_cfg.dev_datasets[dataset]
+            encoder_type = ds_cfg.encoder_type
+            rep_positions = ds_cfg.selector.get_positions(
+                biencoder_input.question_ids, self.tensorizer
+            )
+
             # split contexts batch into sub batches since it is supposed to be too large to be processed in one batch
             for j, batch_start in enumerate(range(0, bsz, sub_batch_size)):
 
@@ -312,7 +379,7 @@ class BiEncoderTrainer(object):
                     else (None, None)
                 )
 
-                if j == 0 and args.n_gpu > 1 and q_ids.size(0) == 1:
+                if j == 0 and cfg.n_gpu > 1 and q_ids.size(0) == 1:
                     # if we are in DP (but not in DDP) mode, all model input tensors should have batch size >1 or 0,
                     # otherwise the other input tensors will be split but only the first split will be called
                     continue
@@ -332,6 +399,8 @@ class BiEncoderTrainer(object):
                         ctx_ids_batch,
                         ctx_seg_batch,
                         ctx_attn_mask,
+                        encoder_type=encoder_type,
+                        representation_token_pos=rep_positions,
                     )
 
                 if q_dense is not None:
@@ -380,7 +449,7 @@ class BiEncoderTrainer(object):
             eval_stats = all_gather_list([rank, q_num], max_size=100)
             for i, item in enumerate(eval_stats):
                 remote_rank, remote_q_num = item
-                if i != args.local_rank:
+                if i != cfg.local_rank:
                     rank += remote_rank
                     q_num += remote_q_num
 
@@ -395,64 +464,93 @@ class BiEncoderTrainer(object):
         scheduler,
         epoch: int,
         eval_step: int,
-        train_data_iterator: ShardedDataIterator,
+        train_data_iterator: MultiSetDataIterator,
     ):
 
-        args = self.args
+        cfg = self.cfg
         rolling_train_loss = 0.0
         epoch_loss = 0
         epoch_correct_predictions = 0
 
-        log_result_step = args.log_batch_step
-        rolling_loss_step = args.train_rolling_loss_step
-        num_hard_negatives = args.hard_negatives
-        num_other_negatives = args.other_negatives
-        seed = args.seed
+        log_result_step = cfg.train.log_batch_step
+        rolling_loss_step = cfg.train.train_rolling_loss_step
+        num_hard_negatives = cfg.train.hard_negatives
+        num_other_negatives = cfg.train.other_negatives
+        seed = cfg.seed
         self.biencoder.train()
         epoch_batches = train_data_iterator.max_iterations
         data_iteration = 0
+
+        dataset = 0
         for i, samples_batch in enumerate(
-            train_data_iterator.iterate_data(epoch=epoch)
+            train_data_iterator.iterate_ds_data(epoch=epoch)
         ):
+            if isinstance(samples_batch, Tuple):
+                samples_batch, dataset = samples_batch
+
+            ds_cfg = self.ds_cfg.train_datasets[dataset]
+            special_token = ds_cfg.special_token
+            encoder_type = ds_cfg.encoder_type
+            shuffle_positives = ds_cfg.shuffle_positives
 
             # to be able to resume shuffled ctx- pools
             data_iteration = train_data_iterator.get_iteration()
             random.seed(seed + epoch + data_iteration)
-            biencoder_batch = BiEncoder.create_biencoder_input(
+
+            biencoder_batch = BiEncoder.create_biencoder_input2(
                 samples_batch,
                 self.tensorizer,
                 True,
                 num_hard_negatives,
                 num_other_negatives,
                 shuffle=True,
-                shuffle_positives=args.shuffle_positive_ctx,
+                shuffle_positives=shuffle_positives,
+                query_token=special_token,
             )
 
+            # get the token to be used for representation selection
+            from dpr.data.biencoder_data import DEFAULT_SELECTOR
+
+            selector = ds_cfg.selector if ds_cfg else DEFAULT_SELECTOR
+
+            rep_positions = selector.get_positions(
+                biencoder_batch.question_ids, self.tensorizer
+            )
+
+            loss_scale = (
+                cfg.loss_scale_factors[dataset] if cfg.loss_scale_factors else None
+            )
             loss, correct_cnt = _do_biencoder_fwd_pass(
-                self.biencoder, biencoder_batch, self.tensorizer, args
+                self.biencoder,
+                biencoder_batch,
+                self.tensorizer,
+                cfg,
+                encoder_type=encoder_type,
+                rep_positions=rep_positions,
+                loss_scale=loss_scale,
             )
 
             epoch_correct_predictions += correct_cnt
             epoch_loss += loss.item()
             rolling_train_loss += loss.item()
 
-            if args.fp16:
+            if cfg.fp16:
                 from apex import amp
 
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
-                if args.max_grad_norm > 0:
+                if cfg.train.max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(
-                        amp.master_params(self.optimizer), args.max_grad_norm
+                        amp.master_params(self.optimizer), cfg.train.max_grad_norm
                     )
             else:
                 loss.backward()
-                if args.max_grad_norm > 0:
+                if cfg.train.max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(
-                        self.biencoder.parameters(), args.max_grad_norm
+                        self.biencoder.parameters(), cfg.train.max_grad_norm
                     )
 
-            if (i + 1) % args.gradient_accumulation_steps == 0:
+            if (i + 1) % cfg.train.gradient_accumulation_steps == 0:
                 self.optimizer.step()
                 scheduler.step()
                 self.biencoder.zero_grad()
@@ -480,7 +578,8 @@ class BiEncoderTrainer(object):
 
             if data_iteration % eval_step == 0:
                 logger.info(
-                    "Validation: Epoch: %d Step: %d/%d",
+                    "rank=%d, Validation: Epoch: %d Step: %d/%d",
+                    cfg.local_rank,
                     epoch,
                     data_iteration,
                     epoch_batches,
@@ -490,6 +589,7 @@ class BiEncoderTrainer(object):
                 )
                 self.biencoder.train()
 
+        logger.info("Epoch finished on %d", cfg.local_rank)
         self.validate_and_save(epoch, data_iteration, scheduler)
 
         epoch_loss = (epoch_loss / epoch_batches) if epoch_batches > 0 else 0
@@ -497,20 +597,12 @@ class BiEncoderTrainer(object):
         logger.info("epoch total correct predictions=%d", epoch_correct_predictions)
 
     def _save_checkpoint(self, scheduler, epoch: int, offset: int) -> str:
-        args = self.args
+        cfg = self.cfg
         model_to_save = get_model_obj(self.biencoder)
-        cp = os.path.join(
-            args.output_dir,
-            args.checkpoint_file_name
-            + "."
-            + str(epoch)
-            + ("." + str(offset) if offset > 0 else ""),
-        )
-
-        meta_params = get_encoder_params_state(args)
-
+        cp = os.path.join(cfg.output_dir, cfg.checkpoint_file_name + "." + str(epoch))
+        meta_params = get_encoder_params_state_from_cfg(cfg)
         state = CheckpointState(
-            model_to_save.state_dict(),
+            model_to_save.get_state_dict(),
             self.optimizer.state_dict(),
             scheduler.state_dict(),
             offset,
@@ -523,41 +615,48 @@ class BiEncoderTrainer(object):
 
     def _load_saved_state(self, saved_state: CheckpointState):
         epoch = saved_state.epoch
+        # offset is currently ignored since all checkpoints are made after full epochs
         offset = saved_state.offset
         if offset == 0:  # epoch has been completed
             epoch += 1
         logger.info("Loading checkpoint @ batch=%s and epoch=%s", offset, epoch)
 
-        self.start_epoch = epoch
-        self.start_batch = offset
+        if self.cfg.ignore_checkpoint_offset:
+            self.start_epoch = 0
+            self.start_batch = 0
+        else:
+            self.start_epoch = epoch
+            # TODO: offset doesn't work for multiset currently
+            self.start_batch = 0  # offset
 
         model_to_load = get_model_obj(self.biencoder)
         logger.info("Loading saved model state ...")
-        model_to_load.load_state_dict(
-            saved_state.model_dict
-        )  # set strict=False if you use extra projection
 
-        if saved_state.optimizer_dict:
-            logger.info("Loading saved optimizer state ...")
-            self.optimizer.load_state_dict(saved_state.optimizer_dict)
+        model_to_load.load_state(saved_state)
 
-        if saved_state.scheduler_dict:
-            self.scheduler_state = saved_state.scheduler_dict
+        if not self.cfg.ignore_checkpoint_optimizer:
+            if saved_state.optimizer_dict:
+                logger.info("Loading saved optimizer state ...")
+                self.optimizer.load_state_dict(saved_state.optimizer_dict)
+
+            if saved_state.scheduler_dict:
+                self.scheduler_state = saved_state.scheduler_dict
 
 
 def _calc_loss(
-    args,
+    cfg,
     loss_function,
     local_q_vector,
     local_ctx_vectors,
     local_positive_idxs,
     local_hard_negatives_idxs: list = None,
+    loss_scale: float = None,
 ) -> Tuple[T, bool]:
     """
     Calculates In-batch negatives schema loss and supports to run it in DDP mode by exchanging the representations
     across all the nodes.
     """
-    distributed_world_size = args.distributed_world_size or 1
+    distributed_world_size = cfg.distributed_world_size or 1
     if distributed_world_size > 1:
         q_vector_to_send = (
             torch.empty_like(local_q_vector).cpu().copy_(local_q_vector).detach_()
@@ -573,7 +672,7 @@ def _calc_loss(
                 local_positive_idxs,
                 local_hard_negatives_idxs,
             ],
-            max_size=args.global_loss_buf_sz,
+            max_size=cfg.global_loss_buf_sz,
         )
 
         global_q_vector = []
@@ -588,7 +687,7 @@ def _calc_loss(
         for i, item in enumerate(global_question_ctx_vectors):
             q_vector, ctx_vectors, positive_idx, hard_negatives_idxs = item
 
-            if i != args.local_rank:
+            if i != cfg.local_rank:
                 global_q_vector.append(q_vector.to(local_q_vector.device))
                 global_ctxs_vector.append(ctx_vectors.to(local_q_vector.device))
                 positive_idx_per_question.extend([v + total_ctxs for v in positive_idx])
@@ -605,7 +704,6 @@ def _calc_loss(
                     [[v + total_ctxs for v in l] for l in local_hard_negatives_idxs]
                 )
             total_ctxs += ctx_vectors.size(0)
-
         global_q_vector = torch.cat(global_q_vector, dim=0)
         global_ctxs_vector = torch.cat(global_ctxs_vector, dim=0)
 
@@ -620,15 +718,23 @@ def _calc_loss(
         global_ctxs_vector,
         positive_idx_per_question,
         hard_negatives_per_question,
+        loss_scale=loss_scale,
     )
 
     return loss, is_correct
 
 
 def _do_biencoder_fwd_pass(
-    model: nn.Module, input: BiEncoderBatch, tensorizer: Tensorizer, args
-) -> (torch.Tensor, int):
-    input = BiEncoderBatch(**move_to_device(input._asdict(), args.device))
+    model: nn.Module,
+    input: BiEncoderBatch,
+    tensorizer: Tensorizer,
+    cfg,
+    encoder_type: str,
+    rep_positions=0,
+    loss_scale: float = None,
+) -> Tuple[torch.Tensor, int]:
+
+    input = BiEncoderBatch(**move_to_device(input._asdict(), cfg.device))
 
     q_attn_mask = tensorizer.get_attn_mask(input.question_ids)
     ctx_attn_mask = tensorizer.get_attn_mask(input.context_ids)
@@ -641,6 +747,8 @@ def _do_biencoder_fwd_pass(
             input.context_ids,
             input.ctx_segments,
             ctx_attn_mask,
+            encoder_type=encoder_type,
+            representation_token_pos=rep_positions,
         )
     else:
         with torch.no_grad():
@@ -651,6 +759,8 @@ def _do_biencoder_fwd_pass(
                 input.context_ids,
                 input.ctx_segments,
                 ctx_attn_mask,
+                encoder_type=encoder_type,
+                representation_token_pos=rep_positions,
             )
 
     local_q_vector, local_ctx_vectors = model_out
@@ -658,136 +768,48 @@ def _do_biencoder_fwd_pass(
     loss_function = BiEncoderNllLoss()
 
     loss, is_correct = _calc_loss(
-        args,
+        cfg,
         loss_function,
         local_q_vector,
         local_ctx_vectors,
         input.is_positive,
         input.hard_negatives,
+        loss_scale=loss_scale,
     )
 
     is_correct = is_correct.sum().item()
 
-    if args.n_gpu > 1:
+    if cfg.n_gpu > 1:
         loss = loss.mean()
-    if args.gradient_accumulation_steps > 1:
-        loss = loss / args.gradient_accumulation_steps
-
+    if cfg.train.gradient_accumulation_steps > 1:
+        loss = loss / cfg.gradient_accumulation_steps
     return loss, is_correct
 
 
-def main():
-    parser = argparse.ArgumentParser()
-
-    add_encoder_params(parser)
-    add_training_params(parser)
-    add_tokenizer_params(parser)
-
-    # biencoder specific training features
-    parser.add_argument(
-        "--eval_per_epoch",
-        default=1,
-        type=int,
-        help="How many times it evaluates on dev set per epoch and saves a checkpoint",
-    )
-
-    parser.add_argument(
-        "--global_loss_buf_sz",
-        type=int,
-        default=150000,
-        help='Buffer size for distributed mode representations al gather operation. \
-                                Increase this if you see errors like "encoded data exceeds max_size ..."',
-    )
-
-    parser.add_argument("--fix_ctx_encoder", action="store_true")
-    parser.add_argument("--shuffle_positive_ctx", action="store_true")
-
-    # input/output src params
-    parser.add_argument(
-        "--output_dir",
-        default=None,
-        type=str,
-        help="The output directory where the model checkpoints will be written or resumed from",
-    )
-
-    # data handling parameters
-    parser.add_argument(
-        "--hard_negatives",
-        default=1,
-        type=int,
-        help="amount of hard negative ctx per question",
-    )
-    parser.add_argument(
-        "--other_negatives",
-        default=0,
-        type=int,
-        help="amount of 'other' negative ctx per question",
-    )
-    parser.add_argument(
-        "--train_files_upsample_rates",
-        type=str,
-        help="list of up-sample rates per each train file. Example: [1,2,1]",
-    )
-
-    # parameters for Av.rank validation method
-    parser.add_argument(
-        "--val_av_rank_start_epoch",
-        type=int,
-        default=10000,
-        help="Av.rank validation: the epoch from which to enable this validation",
-    )
-    parser.add_argument(
-        "--val_av_rank_hard_neg",
-        type=int,
-        default=30,
-        help="Av.rank validation: how many hard negatives to take from each question pool",
-    )
-    parser.add_argument(
-        "--val_av_rank_other_neg",
-        type=int,
-        default=30,
-        help="Av.rank validation: how many 'other' negatives to take from each question pool",
-    )
-    parser.add_argument(
-        "--val_av_rank_bsz",
-        type=int,
-        default=128,
-        help="Av.rank validation: batch size to process passages",
-    )
-    parser.add_argument(
-        "--val_av_rank_max_qs",
-        type=int,
-        default=10000,
-        help="Av.rank validation: max num of questions",
-    )
-    parser.add_argument(
-        "--checkpoint_file_name",
-        type=str,
-        default="dpr_biencoder",
-        help="Checkpoints file prefix",
-    )
-
-    args = parser.parse_args()
-
-    if args.gradient_accumulation_steps < 1:
+@hydra.main(config_path="conf", config_name="biencoder_train_cfg")
+def main(cfg: DictConfig):
+    if cfg.train.gradient_accumulation_steps < 1:
         raise ValueError(
             "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
-                args.gradient_accumulation_steps
+                cfg.train.gradient_accumulation_steps
             )
         )
 
-    if args.output_dir is not None:
-        os.makedirs(args.output_dir, exist_ok=True)
+    if cfg.output_dir is not None:
+        os.makedirs(cfg.output_dir, exist_ok=True)
 
-    setup_args_gpu(args)
-    set_seed(args)
-    print_args(args)
+    cfg = setup_cfg_gpu(cfg)
+    set_seed(cfg)
 
-    trainer = BiEncoderTrainer(args)
+    if cfg.local_rank in [-1, 0]:
+        logger.info("CFG (after gpu  configuration):")
+        logger.info("%s", OmegaConf.to_yaml(cfg))
 
-    if args.train_file is not None:
+    trainer = BiEncoderTrainer(cfg)
+
+    if cfg.train_datasets and len(cfg.train_datasets) > 0:
         trainer.run_train()
-    elif args.model_file and args.dev_file:
+    elif cfg.model_file and cfg.dev_datasets:
         logger.info(
             "No train files are specified. Run 2 types of validation for specified model file"
         )
@@ -800,4 +822,15 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.info("Sys.argv: %s", sys.argv)
+    hydra_formatted_args = []
+    # convert the cli params added by torch.distributed.launch into Hydra format
+    for arg in sys.argv:
+        if arg.startswith("--"):
+            hydra_formatted_args.append(arg[len("--") :])
+        else:
+            hydra_formatted_args.append(arg)
+    logger.info("Hydra formatted Sys.argv: %s", hydra_formatted_args)
+    sys.argv = hydra_formatted_args
+
     main()

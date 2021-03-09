@@ -6,17 +6,16 @@
 # LICENSE file in the root directory of this source tree.
 
 """
- FAISS-based index components for dense retriver
+ FAISS-based index components for dense retriever
 """
 
-import os
-import time
-import logging
-import pickle
-from typing import List, Tuple, Iterator
-
 import faiss
+import logging
 import numpy as np
+import os
+import pickle
+
+from typing import List, Tuple
 
 logger = logging.getLogger()
 
@@ -27,28 +26,13 @@ class DenseIndexer(object):
         self.index_id_to_db_id = []
         self.index = None
 
-    def index_data(self, vector_files: List[str]):
-        start_time = time.time()
-        buffer = []
-        for i, item in enumerate(iterate_encoded_files(vector_files)):
-            db_id, doc_vector = item
-            buffer.append((db_id, doc_vector))
-            if 0 < self.buffer_size == len(buffer):
-                # indexing in batches is beneficial for many faiss index types
-                self._index_batch(buffer)
-                logger.info(
-                    "data indexed %d, used_time: %f sec.",
-                    len(self.index_id_to_db_id),
-                    time.time() - start_time,
-                )
-                buffer = []
-        self._index_batch(buffer)
+    def init_index(self, vector_sz: int):
+        raise NotImplementedError
 
-        indexed_cnt = len(self.index_id_to_db_id)
-        logger.info("Total data indexed %d", indexed_cnt)
-        logger.info("Data indexing completed.")
+    def index_data(self, data: List[Tuple[object, np.array]]):
+        raise NotImplementedError
 
-    def _index_batch(self, data: List[Tuple[object, np.array]]):
+    def get_index_name(self):
         raise NotImplementedError
 
     def search_knn(
@@ -70,15 +54,22 @@ class DenseIndexer(object):
         with open(meta_file, mode="wb") as f:
             pickle.dump(self.index_id_to_db_id, f)
 
-    def deserialize_from(self, file: str):
-        logger.info("Loading index from %s", file)
-
-        if os.path.isdir(file):
-            index_file = os.path.join(file, "index.dpr")
-            meta_file = os.path.join(file, "index_meta.dpr")
+    def get_files(self, path: str):
+        if os.path.isdir(path):
+            index_file = os.path.join(path, "index.dpr")
+            meta_file = os.path.join(path, "index_meta.dpr")
         else:
-            index_file = file + ".index.dpr"
-            meta_file = file + ".index_meta.dpr"
+            index_file = path + ".{}.dpr".format(self.get_index_name())
+            meta_file = path + ".{}_meta.dpr".format(self.get_index_name())
+        return index_file, meta_file
+
+    def index_exists(self, path: str):
+        index_file, meta_file = self.get_files(path)
+        return os.path.isfile(index_file) and os.path.isfile(meta_file)
+
+    def deserialize(self, path: str):
+        logger.info("Loading index from %s", path)
+        index_file, meta_file = self.get_files(path)
 
         self.index = faiss.read_index(index_file)
         logger.info(
@@ -91,21 +82,33 @@ class DenseIndexer(object):
             len(self.index_id_to_db_id) == self.index.ntotal
         ), "Deserialized index_id_to_db_id should match faiss index size"
 
-    def _update_id_mapping(self, db_ids: List):
+    def _update_id_mapping(self, db_ids: List) -> int:
         self.index_id_to_db_id.extend(db_ids)
+        return len(self.index_id_to_db_id)
 
 
 class DenseFlatIndexer(DenseIndexer):
-    def __init__(self, vector_sz: int, buffer_size: int = 50000):
+    def __init__(self, buffer_size: int = 50000):
         super(DenseFlatIndexer, self).__init__(buffer_size=buffer_size)
+
+    def init_index(self, vector_sz: int):
         self.index = faiss.IndexFlatIP(vector_sz)
 
-    def _index_batch(self, data: List[Tuple[object, np.array]]):
-        db_ids = [t[0] for t in data]
-        vectors = [np.reshape(t[1], (1, -1)) for t in data]
-        vectors = np.concatenate(vectors, axis=0)
-        self._update_id_mapping(db_ids)
-        self.index.add(vectors)
+    def index_data(self, data: List[Tuple[object, np.array]]):
+        n = len(data)
+        # indexing in batches is beneficial for many faiss index types
+        for i in range(0, n, self.buffer_size):
+            db_ids = [t[0] for t in data[i : i + self.buffer_size]]
+            vectors = [
+                np.reshape(t[1], (1, -1)) for t in data[i : i + self.buffer_size]
+            ]
+            vectors = np.concatenate(vectors, axis=0)
+            total_data = self._update_id_mapping(db_ids)
+            self.index.add(vectors)
+            logger.info("data indexed %d", total_data)
+
+        indexed_cnt = len(self.index_id_to_db_id)
+        logger.info("Total data indexed %d", indexed_cnt)
 
     def search_knn(
         self, query_vectors: np.array, top_docs: int
@@ -119,6 +122,9 @@ class DenseFlatIndexer(DenseIndexer):
         result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
         return result
 
+    def get_index_name(self):
+        return "flat_index"
+
 
 class DenseHNSWFlatIndexer(DenseIndexer):
     """
@@ -127,61 +133,66 @@ class DenseHNSWFlatIndexer(DenseIndexer):
 
     def __init__(
         self,
-        vector_sz: int,
         buffer_size: int = 50000,
         store_n: int = 512,
         ef_search: int = 128,
         ef_construction: int = 200,
     ):
         super(DenseHNSWFlatIndexer, self).__init__(buffer_size=buffer_size)
+        self.store_n = store_n
+        self.ef_search = ef_search
+        self.ef_construction = ef_construction
+        self.phi = 0
 
+    def init_index(self, vector_sz: int):
         # IndexHNSWFlat supports L2 similarity only
         # so we have to apply DOT -> L2 similairy space conversion with the help of an extra dimension
-        index = faiss.IndexHNSWFlat(vector_sz + 1, store_n)
-        index.hnsw.efSearch = ef_search
-        index.hnsw.efConstruction = ef_construction
+        index = faiss.IndexHNSWFlat(vector_sz + 1, self.store_n)
+        index.hnsw.efSearch = self.ef_search
+        index.hnsw.efConstruction = self.ef_construction
         self.index = index
-        self.phi = None
 
-    def index_data(self, vector_files: List[str]):
-        self._set_phi(vector_files)
-        super(DenseHNSWFlatIndexer, self).index_data(vector_files)
+    def index_data(self, data: List[Tuple[object, np.array]]):
+        n = len(data)
 
-    def _set_phi(self, vector_files: List[str]):
-        """
-        Calculates the max norm from the whole data and assign it to self.phi: necessary to transform IP -> L2 space
-        :param vector_files: file names to get passages vectors from
-        :return:
-        """
+        # max norm is required before putting all vectors in the index to convert inner product similarity to L2
+        if self.phi > 0:
+            raise RuntimeError(
+                "DPR HNSWF index needs to index all data at once,"
+                "results will be unpredictable otherwise."
+            )
         phi = 0
-        for i, item in enumerate(iterate_encoded_files(vector_files)):
-            id, doc_vector = item
+        for i, item in enumerate(data):
+            id, doc_vector = item[0:2]
             norms = (doc_vector ** 2).sum()
             phi = max(phi, norms)
         logger.info("HNSWF DotProduct -> L2 space phi={}".format(phi))
+        self.phi = 0
 
-    def _index_batch(self, data: List[Tuple[object, np.array]]):
-        # max norm is required before putting all vectors in the index to convert inner product similarity to L2
-        if self.phi is None:
-            raise RuntimeError(
-                "Max norm needs to be calculated from all data at once,"
-                "results will be unpredictable otherwise."
-                "Run `_set_phi()` before calling this method."
-            )
+        # indexing in batches is beneficial for many faiss index types
 
-        db_ids = [t[0] for t in data]
-        vectors = [np.reshape(t[1], (1, -1)) for t in data]
+        bs = int(self.buffer_size)
+        for i in range(0, n, bs):
+            db_ids = [t[0] for t in data[i : i + bs]]
+            vectors = [np.reshape(t[1], (1, -1)) for t in data[i : i + bs]]
 
-        norms = [(doc_vector ** 2).sum() for doc_vector in vectors]
-        aux_dims = [np.sqrt(self.phi - norm) for norm in norms]
-        hnsw_vectors = [
-            np.hstack((doc_vector, aux_dims[i].reshape(-1, 1)))
-            for i, doc_vector in enumerate(vectors)
-        ]
-        hnsw_vectors = np.concatenate(hnsw_vectors, axis=0)
+            norms = [(doc_vector ** 2).sum() for doc_vector in vectors]
+            aux_dims = [np.sqrt(phi - norm) for norm in norms]
+            hnsw_vectors = [
+                np.hstack((doc_vector, aux_dims[i].reshape(-1, 1)))
+                for i, doc_vector in enumerate(vectors)
+            ]
+            hnsw_vectors = np.concatenate(hnsw_vectors, axis=0)
+            self.train(hnsw_vectors)
 
-        self._update_id_mapping(db_ids)
-        self.index.add(hnsw_vectors)
+            self._update_id_mapping(db_ids)
+            self.index.add(hnsw_vectors)
+            logger.info("data indexed %d", len(self.index_id_to_db_id))
+        indexed_cnt = len(self.index_id_to_db_id)
+        logger.info("Total data indexed %d", indexed_cnt)
+
+    def train(self, vectors: np.array):
+        pass
 
     def search_knn(
         self, query_vectors: np.array, top_docs: int
@@ -199,17 +210,46 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
         return result
 
-    def deserialize_from(self, file: str):
-        super(DenseHNSWFlatIndexer, self).deserialize_from(file)
+    def deserialize(self, file: str):
+        super(DenseHNSWFlatIndexer, self).deserialize(file)
         # to trigger warning on subsequent indexing
-        self.phi = None
+        self.phi = 1
+
+    def get_index_name(self):
+        return "hnsw_index"
 
 
-def iterate_encoded_files(vector_files: list) -> Iterator[Tuple[object, np.array]]:
-    for i, file in enumerate(vector_files):
-        logger.info("Reading file %s", file)
-        with open(file, "rb") as reader:
-            doc_vectors = pickle.load(reader)
-            for doc in doc_vectors:
-                db_id, doc_vector = doc
-                yield db_id, doc_vector
+class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
+    """
+    Efficient index for retrieval. Note: default settings are for hugh accuracy but also high RAM usage
+    """
+
+    def __init__(
+        self,
+        buffer_size: int = 1e10,
+        store_n: int = 128,
+        ef_search: int = 128,
+        ef_construction: int = 200,
+    ):
+        super(DenseHNSWSQIndexer, self).__init__(
+            buffer_size=buffer_size,
+            store_n=store_n,
+            ef_search=ef_search,
+            ef_construction=ef_construction,
+        )
+
+    def init_index(self, vector_sz: int):
+        # IndexHNSWFlat supports L2 similarity only
+        # so we have to apply DOT -> L2 similairy space conversion with the help of an extra dimension
+        index = faiss.IndexHNSWSQ(
+            vector_sz + 1, faiss.ScalarQuantizer.QT_8bit, self.store_n
+        )
+        index.hnsw.efSearch = self.ef_search
+        index.hnsw.efConstruction = self.ef_construction
+        self.index = index
+
+    def train(self, vectors: np.array):
+        self.index.train(vectors)
+
+    def get_index_name(self):
+        return "hnswsq_index"

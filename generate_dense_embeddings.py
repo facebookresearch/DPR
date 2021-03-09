@@ -9,28 +9,23 @@
  Command line tool that produces embeddings for a large documents base based on the pretrained ctx & question encoders
  Supposed to be used in a 'sharded' way to speed up the process.
 """
+import logging
+import math
 import os
 import pathlib
-
-import argparse
-import csv
-import logging
 import pickle
 from typing import List, Tuple
 
+import hydra
 import numpy as np
 import torch
+from omegaconf import DictConfig, OmegaConf
 from torch import nn
 
+from dpr.data.biencoder_data import BiEncoderPassage
 from dpr.models import init_biencoder_components
-from dpr.options import (
-    add_encoder_params,
-    setup_args_gpu,
-    print_args,
-    set_encoder_params_from_state,
-    add_tokenizer_params,
-    add_cuda_params,
-)
+from dpr.options import set_cfg_params_from_state, setup_cfg_gpu, setup_logger
+
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
@@ -40,76 +35,94 @@ from dpr.utils.model_utils import (
 )
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-if logger.hasHandlers():
-    logger.handlers.clear()
-console = logging.StreamHandler()
-logger.addHandler(console)
+setup_logger(logger)
 
 
 def gen_ctx_vectors(
-    ctx_rows: List[Tuple[object, str, str]],
+    cfg: DictConfig,
+    ctx_rows: List[Tuple[object, BiEncoderPassage]],
     model: nn.Module,
     tensorizer: Tensorizer,
     insert_title: bool = True,
 ) -> List[Tuple[object, np.array]]:
     n = len(ctx_rows)
-    bsz = args.batch_size
+    bsz = cfg.batch_size
     total = 0
     results = []
     for j, batch_start in enumerate(range(0, n, bsz)):
-
+        batch = ctx_rows[batch_start : batch_start + bsz]
         batch_token_tensors = [
-            tensorizer.text_to_tensor(ctx[1], title=ctx[2] if insert_title else None)
-            for ctx in ctx_rows[batch_start : batch_start + bsz]
+            tensorizer.text_to_tensor(
+                ctx[1].text, title=ctx[1].title if insert_title else None
+            )
+            for ctx in batch
         ]
 
         ctx_ids_batch = move_to_device(
-            torch.stack(batch_token_tensors, dim=0), args.device
+            torch.stack(batch_token_tensors, dim=0), cfg.device
         )
-        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch), args.device)
+        ctx_seg_batch = move_to_device(torch.zeros_like(ctx_ids_batch), cfg.device)
         ctx_attn_mask = move_to_device(
-            tensorizer.get_attn_mask(ctx_ids_batch), args.device
+            tensorizer.get_attn_mask(ctx_ids_batch), cfg.device
         )
         with torch.no_grad():
             _, out, _ = model(ctx_ids_batch, ctx_seg_batch, ctx_attn_mask)
         out = out.cpu()
 
-        ctx_ids = [r[0] for r in ctx_rows[batch_start : batch_start + bsz]]
+        ctx_ids = [r[0] for r in batch]
+        extra_info = []
+        if len(batch[0]) > 3:
+            extra_info = [r[3:] for r in batch]
 
         assert len(ctx_ids) == out.size(0)
-
         total += len(ctx_ids)
 
-        results.extend(
-            [(ctx_ids[i], out[i].view(-1).numpy()) for i in range(out.size(0))]
-        )
+        # TODO: refactor to avoid 'if'
+        if extra_info:
+            results.extend(
+                [
+                    (ctx_ids[i], out[i].view(-1).numpy(), *extra_info[i])
+                    for i in range(out.size(0))
+                ]
+            )
+        else:
+            results.extend(
+                [(ctx_ids[i], out[i].view(-1).numpy()) for i in range(out.size(0))]
+            )
 
         if total % 10 == 0:
             logger.info("Encoded passages %d", total)
-
     return results
 
 
-def main(args):
-    saved_state = load_states_from_checkpoint(args.model_file)
-    set_encoder_params_from_state(saved_state.encoder_params, args)
-    print_args(args)
+@hydra.main(config_path="conf", config_name="gen_embs")
+def main(cfg: DictConfig):
+
+    assert cfg.model_file, "Please specify encoder checkpoint as model_file param"
+    assert cfg.ctx_src, "Please specify passages source as ctx_src param"
+
+    cfg = setup_cfg_gpu(cfg)
+
+    saved_state = load_states_from_checkpoint(cfg.model_file)
+    set_cfg_params_from_state(saved_state.encoder_params, cfg)
+
+    logger.info("CFG:")
+    logger.info("%s", OmegaConf.to_yaml(cfg))
 
     tensorizer, encoder, _ = init_biencoder_components(
-        args.encoder_model_type, args, inference_only=True
+        cfg.encoder.encoder_model_type, cfg, inference_only=True
     )
 
-    encoder = encoder.ctx_model
+    encoder = encoder.ctx_model if cfg.encoder_type == "ctx" else encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
         encoder,
         None,
-        args.device,
-        args.n_gpu,
-        args.local_rank,
-        args.fp16,
-        args.fp16_opt_level,
+        cfg.device,
+        cfg.n_gpu,
+        cfg.local_rank,
+        cfg.fp16,
+        cfg.fp16_opt_level,
     )
     encoder.eval()
 
@@ -126,29 +139,28 @@ def main(args):
     }
     model_to_load.load_state_dict(ctx_state)
 
-    logger.info("reading data from file=%s", args.ctx_file)
+    logger.info("reading data source: %s", cfg.ctx_src)
 
-    rows = []
-    with open(args.ctx_file) as tsvfile:
-        reader = csv.reader(tsvfile, delimiter="\t")
-        # file format: doc_id, doc_text, title
-        rows.extend([(row[0], row[1], row[2]) for row in reader if row[0] != "id"])
+    ctx_src = hydra.utils.instantiate(cfg.ctx_sources[cfg.ctx_src])
+    all_passages_dict = {}
+    ctx_src.load_data_to(all_passages_dict)
+    all_passages = [(k, v) for k, v in all_passages_dict.items()]
 
-    shard_size = int(len(rows) / args.num_shards)
-    start_idx = args.shard_id * shard_size
+    shard_size = math.ceil(len(all_passages) / cfg.num_shards)
+    start_idx = cfg.shard_id * shard_size
     end_idx = start_idx + shard_size
 
     logger.info(
         "Producing encodings for passages range: %d to %d (out of total %d)",
         start_idx,
         end_idx,
-        len(rows),
+        len(all_passages),
     )
-    rows = rows[start_idx:end_idx]
+    shard_passages = all_passages[start_idx:end_idx]
 
-    data = gen_ctx_vectors(rows, encoder, tensorizer, True)
+    data = gen_ctx_vectors(cfg, shard_passages, encoder, tensorizer, True)
 
-    file = args.out_file + "_" + str(args.shard_id) + ".pkl"
+    file = cfg.out_file + "_" + str(cfg.shard_id)
     pathlib.Path(os.path.dirname(file)).mkdir(parents=True, exist_ok=True)
     logger.info("Writing results to %s" % file)
     with open(file, mode="wb") as f:
@@ -158,43 +170,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    add_encoder_params(parser)
-    add_tokenizer_params(parser)
-    add_cuda_params(parser)
-
-    parser.add_argument(
-        "--ctx_file", type=str, default=None, help="Path to passages set .tsv file"
-    )
-    parser.add_argument(
-        "--out_file",
-        required=True,
-        type=str,
-        default=None,
-        help="output .tsv file path to write results to ",
-    )
-    parser.add_argument(
-        "--shard_id",
-        type=int,
-        default=0,
-        help="Number(0-based) of data shard to process",
-    )
-    parser.add_argument(
-        "--num_shards", type=int, default=1, help="Total amount of data shards"
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=32,
-        help="Batch size for the passage encoder forward pass",
-    )
-    args = parser.parse_args()
-
-    assert (
-        args.model_file
-    ), "Please specify --model_file checkpoint to init model weights"
-
-    setup_args_gpu(args)
-
-    main(args)
+    main()

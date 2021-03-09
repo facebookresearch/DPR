@@ -10,42 +10,39 @@
  Pipeline to train the reader model on top of the retriever results
 """
 
-import argparse
 import collections
-import glob
 import json
+import sys
+
+import hydra
 import logging
+import numpy as np
 import os
+import torch
+
 from collections import defaultdict
+from omegaconf import DictConfig, OmegaConf
 from typing import List
 
-import numpy as np
-import torch
 
 from dpr.data.qa_validation import exact_match_score
 from dpr.data.reader_data import (
     ReaderSample,
     get_best_spans,
     SpanPrediction,
-    convert_retriever_results,
+    ExtractiveReaderDataset,
 )
 from dpr.models import init_reader_components
 from dpr.models.reader import create_reader_input, ReaderBatch, compute_loss
 from dpr.options import (
-    add_encoder_params,
-    setup_args_gpu,
+    setup_cfg_gpu,
     set_seed,
-    add_training_params,
-    add_reader_preprocessing_params,
-    set_encoder_params_from_state,
-    get_encoder_params_state,
-    add_tokenizer_params,
-    print_args,
+    set_cfg_params_from_state,
+    get_encoder_params_state_from_cfg,
+    setup_logger,
 )
 from dpr.utils.data_utils import (
     ShardedDataIterator,
-    read_serialized_data_from_files,
-    Tensorizer,
 )
 from dpr.utils.model_utils import (
     get_schedule_linear,
@@ -58,11 +55,7 @@ from dpr.utils.model_utils import (
 )
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-if logger.hasHandlers():
-    logger.handlers.clear()
-console = logging.StreamHandler()
-logger.addHandler(console)
+setup_logger(logger)
 
 ReaderQuestionPredictions = collections.namedtuple(
     "ReaderQuestionPredictions", ["id", "predictions", "gold_answers"]
@@ -70,32 +63,32 @@ ReaderQuestionPredictions = collections.namedtuple(
 
 
 class ReaderTrainer(object):
-    def __init__(self, args):
-        self.args = args
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg
 
-        self.shard_id = args.local_rank if args.local_rank != -1 else 0
-        self.distributed_factor = args.distributed_world_size or 1
+        self.shard_id = cfg.local_rank if cfg.local_rank != -1 else 0
+        self.distributed_factor = cfg.distributed_world_size or 1
 
         logger.info("***** Initializing components for training *****")
 
-        model_file = get_model_file(self.args, self.args.checkpoint_file_name)
+        model_file = get_model_file(self.cfg, self.cfg.checkpoint_file_name)
         saved_state = None
         if model_file:
             saved_state = load_states_from_checkpoint(model_file)
-            set_encoder_params_from_state(saved_state.encoder_params, args)
+            set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
         tensorizer, reader, optimizer = init_reader_components(
-            args.encoder_model_type, args
+            cfg.encoder.encoder_model_type, cfg
         )
 
         reader, optimizer = setup_for_distributed_mode(
             reader,
             optimizer,
-            args.device,
-            args.n_gpu,
-            args.local_rank,
-            args.fp16,
-            args.fp16_opt_level,
+            cfg.device,
+            cfg.n_gpu,
+            cfg.local_rank,
+            cfg.fp16,
+            cfg.fp16_opt_level,
         )
         self.reader = reader
         self.optimizer = optimizer
@@ -117,15 +110,35 @@ class ReaderTrainer(object):
         shuffle_seed: int = 0,
         offset: int = 0,
     ) -> ShardedDataIterator:
-        data_files = glob.glob(path)
-        logger.info("Data files: %s", data_files)
-        if not data_files:
-            raise RuntimeError("No Data files found")
-        preprocessed_data_files = self._get_preprocessed_files(data_files, is_train)
-        data = read_serialized_data_from_files(preprocessed_data_files)
+
+        run_preprocessing = (
+            True
+            if self.distributed_factor == 1 or self.cfg.local_rank in [-1, 0]
+            else False
+        )
+
+        gold_passages_src = self.cfg.gold_passages_src
+        if gold_passages_src:
+            if not is_train:
+                gold_passages_src = self.cfg.gold_passages_src_dev
+
+            assert os.path.exists(
+                gold_passages_src
+            ), "Please specify valid gold_passages_src/gold_passages_src_dev"
+
+        dataset = ExtractiveReaderDataset(
+            path,
+            is_train,
+            gold_passages_src,
+            self.tensorizer,
+            run_preprocessing,
+            self.cfg.num_workers,
+        )
+
+        dataset.load_data()
 
         iterator = ShardedDataIterator(
-            data,
+            dataset,
             shard_id=self.shard_id,
             num_shards=self.distributed_factor,
             batch_size=batch_size,
@@ -139,47 +152,54 @@ class ReaderTrainer(object):
         return iterator
 
     def run_train(self):
-        args = self.args
+        cfg = self.cfg
 
         train_iterator = self.get_data_iterator(
-            args.train_file,
-            args.batch_size,
+            cfg.train_files,
+            cfg.train.batch_size,
             True,
             shuffle=True,
-            shuffle_seed=args.seed,
+            shuffle_seed=cfg.seed,
             offset=self.start_batch,
         )
 
-        num_train_epochs = args.num_train_epochs - self.start_epoch
+        # num_train_epochs = cfg.train.num_train_epochs - self.start_epoch
 
         logger.info("Total iterations per epoch=%d", train_iterator.max_iterations)
         updates_per_epoch = (
-            train_iterator.max_iterations // args.gradient_accumulation_steps
+            train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
         )
-        total_updates = updates_per_epoch * num_train_epochs - self.start_batch
+
+        total_updates = updates_per_epoch * cfg.train.num_train_epochs
         logger.info(" Total updates=%d", total_updates)
 
-        warmup_steps = args.warmup_steps
-        scheduler = get_schedule_linear(
-            self.optimizer, warmup_steps=warmup_steps, training_steps=total_updates
-        )
+        warmup_steps = cfg.train.warmup_steps
+
         if self.scheduler_state:
             logger.info("Loading scheduler state %s", self.scheduler_state)
-            scheduler.load_state_dict(self.scheduler_state)
+            shift = int(self.scheduler_state["last_epoch"])
+            logger.info("Steps shift %d", shift)
+            scheduler = get_schedule_linear(
+                self.optimizer,
+                warmup_steps,
+                total_updates,
+            )
+        else:
+            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
 
-        eval_step = args.eval_step
+        eval_step = cfg.train.eval_step
         logger.info("  Eval step = %d", eval_step)
         logger.info("***** Training *****")
 
         global_step = self.start_epoch * updates_per_epoch + self.start_batch
 
-        for epoch in range(self.start_epoch, int(args.num_train_epochs)):
+        for epoch in range(self.start_epoch, cfg.train.num_train_epochs):
             logger.info("***** Epoch %d *****", epoch)
             global_step = self._train_epoch(
                 scheduler, epoch, eval_step, train_iterator, global_step
             )
 
-        if args.local_rank in [-1, 0]:
+        if cfg.local_rank in [-1, 0]:
             logger.info(
                 "Training finished. Best validation checkpoint %s", self.best_cp_name
             )
@@ -187,9 +207,9 @@ class ReaderTrainer(object):
         return
 
     def validate_and_save(self, epoch: int, iteration: int, scheduler):
-        args = self.args
+        cfg = self.cfg
         # in distributed DDP mode, save checkpoint for only one process
-        save_cp = args.local_rank in [-1, 0]
+        save_cp = cfg.local_rank in [-1, 0]
         reader_validation_score = self.validate()
 
         if save_cp:
@@ -203,28 +223,28 @@ class ReaderTrainer(object):
 
     def validate(self):
         logger.info("Validation ...")
-        args = self.args
+        cfg = self.cfg
         self.reader.eval()
         data_iterator = self.get_data_iterator(
-            args.dev_file, args.dev_batch_size, False, shuffle=False
+            cfg.dev_files, cfg.train.dev_batch_size, False, shuffle=False
         )
 
-        log_result_step = args.log_batch_step
+        log_result_step = cfg.train.log_batch_step
         all_results = []
 
-        eval_top_docs = args.eval_top_docs
-        for i, samples_batch in enumerate(data_iterator.iterate_data()):
+        eval_top_docs = cfg.eval_top_docs
+        for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             input = create_reader_input(
                 self.tensorizer.get_pad_id(),
                 samples_batch,
-                args.passages_per_question_predict,
-                args.sequence_length,
-                args.max_n_answers,
+                cfg.passages_per_question_predict,
+                cfg.encoder.sequence_length,
+                cfg.max_n_answers,
                 is_train=False,
                 shuffle=False,
             )
 
-            input = ReaderBatch(**move_to_device(input._asdict(), args.device))
+            input = ReaderBatch(**move_to_device(input._asdict(), cfg.device))
             attn_mask = self.tensorizer.get_attn_mask(input.input_ids)
 
             with torch.no_grad():
@@ -265,8 +285,8 @@ class ReaderTrainer(object):
             em = np.mean(ems[n])
             logger.info("n=%d\tEM %.2f" % (n, em * 100))
 
-        if args.prediction_results_file:
-            self._save_predictions(args.prediction_results_file, all_results)
+        if cfg.prediction_results_file:
+            self._save_predictions(cfg.prediction_results_file, all_results)
 
         return em
 
@@ -278,34 +298,34 @@ class ReaderTrainer(object):
         train_data_iterator: ShardedDataIterator,
         global_step: int,
     ):
-        args = self.args
+        cfg = self.cfg
         rolling_train_loss = 0.0
         epoch_loss = 0
-        log_result_step = args.log_batch_step
-        rolling_loss_step = args.train_rolling_loss_step
+        log_result_step = cfg.train.log_batch_step
+        rolling_loss_step = cfg.train.train_rolling_loss_step
 
         self.reader.train()
         epoch_batches = train_data_iterator.max_iterations
 
         for i, samples_batch in enumerate(
-            train_data_iterator.iterate_data(epoch=epoch)
+            train_data_iterator.iterate_ds_data(epoch=epoch)
         ):
 
             data_iteration = train_data_iterator.get_iteration()
 
             # enables to resume to exactly same train state
-            if args.fully_resumable:
-                np.random.seed(args.seed + global_step)
-                torch.manual_seed(args.seed + global_step)
-                if args.n_gpu > 0:
-                    torch.cuda.manual_seed_all(args.seed + global_step)
+            if cfg.fully_resumable:
+                np.random.seed(cfg.seed + global_step)
+                torch.manual_seed(cfg.seed + global_step)
+                if cfg.n_gpu > 0:
+                    torch.cuda.manual_seed_all(cfg.seed + global_step)
 
             input = create_reader_input(
                 self.tensorizer.get_pad_id(),
                 samples_batch,
-                args.passages_per_question,
-                args.sequence_length,
-                args.max_n_answers,
+                cfg.passages_per_question,
+                cfg.encoder.sequence_length,
+                cfg.max_n_answers,
                 is_train=True,
                 shuffle=True,
             )
@@ -315,30 +335,30 @@ class ReaderTrainer(object):
             epoch_loss += loss.item()
             rolling_train_loss += loss.item()
 
-            if args.fp16:
+            max_grad_norm = cfg.train.max_grad_norm
+            if cfg.fp16:
                 from apex import amp
 
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
-                if args.max_grad_norm > 0:
+                if max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(
-                        amp.master_params(self.optimizer), args.max_grad_norm
+                        amp.master_params(self.optimizer), max_grad_norm
                     )
             else:
                 loss.backward()
-                if args.max_grad_norm > 0:
+                if max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(
-                        self.reader.parameters(), args.max_grad_norm
+                        self.reader.parameters(), max_grad_norm
                     )
 
-            global_step += 1
-
-            if (i + 1) % args.gradient_accumulation_steps == 0:
+            if (i + 1) % cfg.train.gradient_accumulation_steps == 0:
                 self.optimizer.step()
                 scheduler.step()
                 self.reader.zero_grad()
+                global_step += 1
 
-            if global_step % log_result_step == 0:
+            if i % log_result_step == 0:
                 lr = self.optimizer.param_groups[0]["lr"]
                 logger.info(
                     "Epoch: %d: Step: %d/%d, global_step=%d, lr=%f",
@@ -376,17 +396,17 @@ class ReaderTrainer(object):
         return global_step
 
     def _save_checkpoint(self, scheduler, epoch: int, offset: int) -> str:
-        args = self.args
+        cfg = self.cfg
         model_to_save = get_model_obj(self.reader)
         cp = os.path.join(
-            args.output_dir,
-            args.checkpoint_file_name
+            cfg.output_dir,
+            cfg.checkpoint_file_name
             + "."
             + str(epoch)
             + ("." + str(offset) if offset > 0 else ""),
         )
 
-        meta_params = get_encoder_params_state(args)
+        meta_params = get_encoder_params_state_from_cfg(cfg)
 
         state = CheckpointState(
             model_to_save.state_dict(),
@@ -427,8 +447,8 @@ class ReaderTrainer(object):
         passage_thresholds: List[int] = None,
     ) -> List[ReaderQuestionPredictions]:
 
-        args = self.args
-        max_answer_length = args.max_answer_length
+        cfg = self.cfg
+        max_answer_length = cfg.max_answer_length
         questions_num, passages_per_question = relevance_logits.size()
 
         _, idxs = torch.sort(
@@ -496,8 +516,8 @@ class ReaderTrainer(object):
         return batch_results
 
     def _calc_loss(self, input: ReaderBatch) -> torch.Tensor:
-        args = self.args
-        input = ReaderBatch(**move_to_device(input._asdict(), args.device))
+        cfg = self.cfg
+        input = ReaderBatch(**move_to_device(input._asdict(), cfg.device))
         attn_mask = self.tensorizer.get_attn_mask(input.input_ids)
         questions_num, passages_per_question, _ = input.input_ids.size()
 
@@ -528,78 +548,12 @@ class ReaderTrainer(object):
                 questions_num,
                 passages_per_question,
             )
-        if args.n_gpu > 1:
+        if cfg.n_gpu > 1:
             loss = loss.mean()
-        if args.gradient_accumulation_steps > 1:
-            loss = loss / args.gradient_accumulation_steps
+        if cfg.train.gradient_accumulation_steps > 1:
+            loss = loss / cfg.trani.gradient_accumulation_steps
 
         return loss
-
-    def _get_preprocessed_files(
-        self,
-        data_files: List,
-        is_train: bool,
-    ):
-
-        serialized_files = [file for file in data_files if file.endswith(".pkl")]
-        if serialized_files:
-            return serialized_files
-        assert len(data_files) == 1, "Only 1 source file pre-processing is supported."
-
-        # data may have been serialized and cached before, try to find ones from same dir
-        def _find_cached_files(path: str):
-            dir_path, base_name = os.path.split(path)
-            base_name = base_name.replace(".json", "")
-            out_file_prefix = os.path.join(dir_path, base_name)
-            out_file_pattern = out_file_prefix + "*.pkl"
-            return glob.glob(out_file_pattern), out_file_prefix
-
-        serialized_files, out_file_prefix = _find_cached_files(data_files[0])
-        if serialized_files:
-            logger.info("Found preprocessed files. %s", serialized_files)
-            return serialized_files
-
-        gold_passages_src = None
-        if self.args.gold_passages_src:
-            gold_passages_src = (
-                self.args.gold_passages_src
-                if is_train
-                else self.args.gold_passages_src_dev
-            )
-            assert os.path.exists(
-                gold_passages_src
-            ), "Please specify valid gold_passages_src/gold_passages_src_dev"
-        logger.info(
-            "Data are not preprocessed for reader training. Start pre-processing ..."
-        )
-
-        # start pre-processing and save results
-        def _run_preprocessing(tensorizer: Tensorizer):
-            # temporarily disable auto-padding to save disk space usage of serialized files
-            tensorizer.set_pad_to_max(False)
-            serialized_files = convert_retriever_results(
-                is_train,
-                data_files[0],
-                out_file_prefix,
-                gold_passages_src,
-                self.tensorizer,
-                num_workers=self.args.num_workers,
-            )
-            tensorizer.set_pad_to_max(True)
-            return serialized_files
-
-        if self.distributed_factor > 1:
-            # only one node in DDP model will do pre-processing
-            if self.args.local_rank in [-1, 0]:
-                serialized_files = _run_preprocessing(self.tensorizer)
-                torch.distributed.barrier()
-            else:
-                torch.distributed.barrier()
-                serialized_files = _find_cached_files(data_files[0])
-        else:
-            serialized_files = _run_preprocessing(self.tensorizer)
-
-        return serialized_files
 
     def _save_predictions(
         self, out_file: str, prediction_results: List[ReaderQuestionPredictions]
@@ -632,88 +586,24 @@ class ReaderTrainer(object):
             output.write(json.dumps(save_results, indent=4) + "\n")
 
 
-def main():
-    parser = argparse.ArgumentParser()
+@hydra.main(config_path="conf", config_name="extractive_reader_train_cfg")
+def main(cfg: DictConfig):
 
-    add_encoder_params(parser)
-    add_training_params(parser)
-    add_tokenizer_params(parser)
-    add_reader_preprocessing_params(parser)
+    if cfg.output_dir is not None:
+        os.makedirs(cfg.output_dir, exist_ok=True)
 
-    # reader specific params
-    parser.add_argument(
-        "--max_n_answers",
-        default=10,
-        type=int,
-        help="Max amount of answer spans to marginalize per singe passage",
-    )
-    parser.add_argument(
-        "--passages_per_question",
-        type=int,
-        default=2,
-        help="Total amount of positive and negative passages per question",
-    )
-    parser.add_argument(
-        "--passages_per_question_predict",
-        type=int,
-        default=50,
-        help="Total amount of positive and negative passages per question for evaluation",
-    )
-    parser.add_argument(
-        "--max_answer_length",
-        default=10,
-        type=int,
-        help="The maximum length of an answer that can be generated. This is needed because the start "
-        "and end predictions are not conditioned on one another.",
-    )
-    parser.add_argument(
-        "--eval_top_docs",
-        nargs="+",
-        type=int,
-        help="top retrival passages thresholds to analyze prediction results for",
-    )
-    parser.add_argument("--checkpoint_file_name", type=str, default="dpr_reader")
-    parser.add_argument(
-        "--prediction_results_file",
-        type=str,
-        help="path to a file to write prediction results to",
-    )
+    cfg = setup_cfg_gpu(cfg)
+    set_seed(cfg)
 
-    # training parameters
-    parser.add_argument(
-        "--eval_step",
-        default=2000,
-        type=int,
-        help="batch steps to run validation and save checkpoint",
-    )
-    parser.add_argument(
-        "--output_dir",
-        default=None,
-        type=str,
-        help="The output directory where the model checkpoints will be written to",
-    )
+    if cfg.local_rank in [-1, 0]:
+        logger.info("CFG (after gpu  configuration):")
+        logger.info("%s", OmegaConf.to_yaml(cfg))
 
-    parser.add_argument(
-        "--fully_resumable",
-        action="store_true",
-        help="Enables resumable mode by specifying global step dependent random seed before shuffling "
-        "in-batch data",
-    )
+    trainer = ReaderTrainer(cfg)
 
-    args = parser.parse_args()
-
-    if args.output_dir is not None:
-        os.makedirs(args.output_dir, exist_ok=True)
-
-    setup_args_gpu(args)
-    set_seed(args)
-    print_args(args)
-
-    trainer = ReaderTrainer(args)
-
-    if args.train_file is not None:
+    if cfg.train_files is not None:
         trainer.run_train()
-    elif args.dev_file:
+    elif cfg.dev_files:
         logger.info("No train files are specified. Run validation.")
         trainer.validate()
     else:
@@ -723,4 +613,14 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.info("Sys.argv: %s", sys.argv)
+    hydra_formatted_args = []
+    # convert the cli params added by torch.distributed.launch into Hydra format
+    for arg in sys.argv:
+        if arg.startswith("--"):
+            hydra_formatted_args.append(arg[len("--") :])
+        else:
+            hydra_formatted_args.append(arg)
+    logger.info("Hydra formatted Sys.argv: %s", hydra_formatted_args)
+    sys.argv = hydra_formatted_args
     main()

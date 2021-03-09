@@ -10,19 +10,21 @@
 """
 
 import collections
+import glob
 import json
 import logging
 import math
 import multiprocessing
+import os
 import pickle
+import torch
+
 from functools import partial
 from typing import Tuple, List, Dict, Iterable, Optional
-
-import torch
 from torch import Tensor as T
 from tqdm import tqdm
 
-from dpr.utils.data_utils import Tensorizer
+from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files
 
 logger = logging.getLogger()
 
@@ -90,6 +92,92 @@ class ReaderSample(object):
     def on_deserialize(self):
         for passage in self.passages + self.positive_passages + self.negative_passages:
             passage.on_deserialize()
+
+
+class ExtractiveReaderDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        files: str,
+        is_train: bool,
+        gold_passages_src: str,
+        tensorizer: Tensorizer,
+        run_preprocessing: bool,
+        num_workers: int,
+    ):
+        self.files = files
+        self.data = []
+        self.is_train = is_train
+        self.gold_passages_src = gold_passages_src
+        self.tensorizer = tensorizer
+        self.run_preprocessing = run_preprocessing
+        self.num_workers = num_workers
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
+
+    def load_data(
+        self,
+    ):
+        data_files = glob.glob(self.files)
+        logger.info("Data files: %s", data_files)
+        if not data_files:
+            raise RuntimeError("No Data files found")
+        preprocessed_data_files = self._get_preprocessed_files(data_files)
+        self.data = read_serialized_data_from_files(preprocessed_data_files)
+
+    def _get_preprocessed_files(
+        self,
+        data_files: List,
+    ):
+
+        serialized_files = [file for file in data_files if file.endswith(".pkl")]
+        if serialized_files:
+            return serialized_files
+        assert len(data_files) == 1, "Only 1 source file pre-processing is supported."
+
+        # data may have been serialized and cached before, try to find ones from same dir
+        def _find_cached_files(path: str):
+            dir_path, base_name = os.path.split(path)
+            base_name = base_name.replace(".json", "")
+            out_file_prefix = os.path.join(dir_path, base_name)
+            out_file_pattern = out_file_prefix + "*.pkl"
+            return glob.glob(out_file_pattern), out_file_prefix
+
+        serialized_files, out_file_prefix = _find_cached_files(data_files[0])
+        if serialized_files:
+            logger.info("Found preprocessed files. %s", serialized_files)
+            return serialized_files
+
+        logger.info(
+            "Data are not preprocessed for reader training. Start pre-processing ..."
+        )
+
+        # start pre-processing and save results
+        def _run_preprocessing(tensorizer: Tensorizer):
+            # temporarily disable auto-padding to save disk space usage of serialized files
+            tensorizer.set_pad_to_max(False)
+            serialized_files = convert_retriever_results(
+                self.is_train,
+                data_files[0],
+                out_file_prefix,
+                self.gold_passages_src,
+                self.tensorizer,
+                num_workers=self.num_workers,
+            )
+            tensorizer.set_pad_to_max(True)
+            return serialized_files
+
+        if self.run_preprocessing:
+            serialized_files = _run_preprocessing(self.tensorizer)
+            # TODO: check if pytorch process group is initialized
+            # torch.distributed.barrier()
+        else:
+            # torch.distributed.barrier()
+            serialized_files = _find_cached_files(data_files[0])
+        return serialized_files
 
 
 SpanPrediction = collections.namedtuple(

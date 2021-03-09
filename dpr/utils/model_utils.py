@@ -60,7 +60,7 @@ def setup_for_distributed_mode(
     if local_rank != -1:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
-            device_ids=[local_rank],
+            device_ids=[device if device else local_rank],
             output_device=local_rank,
             find_unused_parameters=True,
         )
@@ -108,18 +108,26 @@ def move_to_device(sample, device):
     return _move_to_device(sample, device)
 
 
-def get_schedule_linear(optimizer, warmup_steps, training_steps, last_epoch=-1):
+def get_schedule_linear(
+    optimizer,
+    warmup_steps,
+    total_training_steps,
+    steps_shift=0,
+    last_epoch=-1,
+):
+
     """Create a schedule with a learning rate that decreases linearly after
     linearly increasing during a warmup period.
     """
 
     def lr_lambda(current_step):
+        current_step += steps_shift
         if current_step < warmup_steps:
             return float(current_step) / float(max(1, warmup_steps))
         return max(
-            0.0,
-            float(training_steps - current_step)
-            / float(max(1, training_steps - warmup_steps)),
+            1e-7,
+            float(total_training_steps - current_step)
+            / float(max(1, total_training_steps - warmup_steps)),
         )
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)

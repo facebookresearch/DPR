@@ -12,7 +12,7 @@ with open("README.md") as f:
 
 setup(
     name="dpr",
-    version="0.1.0",
+    version="1.0.0",
     description="Facebook AI Research Open Domain Q&A Toolkit",
     url="https://github.com/facebookresearch/DPR/",
     classifiers=[
@@ -27,15 +27,16 @@ setup(
         "setuptools>=18.0",
     ],
     install_requires=[
-        "cython",
         "faiss-cpu>=1.6.1",
         "filelock",
         "numpy",
         "regex",
-        "torch>=1.2.0",
+        "torch>=1.5.0",
         "transformers>=3.0.0,<3.1.0",
         "tqdm>=4.27",
         "wget",
         "spacy>=2.1.8",
+        "hydra-core>=1.0.0",
+        "omegaconf>=2.0.1",
     ],
 )

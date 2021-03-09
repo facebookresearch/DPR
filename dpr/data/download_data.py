@@ -9,12 +9,18 @@
  Command line tool to download various preprocessed data sources & checkpoints for DPR
 """
 
+import argparse
 import gzip
+import logging
 import os
 import pathlib
-
-import argparse
 import wget
+
+from typing import Tuple
+
+logger = logging.getLogger(__name__)
+
+# TODO: move to hydra config group
 
 NQ_LICENSE_FILES = [
     "https://dl.fbaipublicfiles.com/dpr/nq_license/LICENSE",
@@ -26,12 +32,6 @@ RESOURCES_MAP = {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz",
         "original_ext": ".tsv",
         "compressed": True,
-        "desc": "Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)",
-    },
-    "compressed-data.wikipedia_split.psgs_w100": {
-        "s3_url": "https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz",
-        "original_ext": ".tsv.gz",
-        "compressed": False,
         "desc": "Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)",
     },
     "data.retriever.nq-dev": {
@@ -46,6 +46,13 @@ RESOURCES_MAP = {
         "original_ext": ".json",
         "compressed": True,
         "desc": "NQ train subset with passages pools for the Retriever training",
+        "license_files": NQ_LICENSE_FILES,
+    },
+    "data.retriever.nq-adv-hn-train": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-adv-hn-train.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "NQ train subset with hard negative passages mined using the baseline DPR NQ encoders & wikipedia index",
         "license_files": NQ_LICENSE_FILES,
     },
     "data.retriever.trivia-dev": {
@@ -111,6 +118,12 @@ RESOURCES_MAP = {
         "original_ext": ".csv",
         "compressed": True,
         "desc": "Trivia train subset for Retriever validation and IR results generation",
+    },
+    "data.retriever.qas.squad1-test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/squad1-test.qa.csv",
+        "original_ext": ".csv",
+        "compressed": False,
+        "desc": "Trivia test subset for Retriever validation and IR results generation",
     },
     "data.gold_passages_info.nq_train": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/nq_gold_info/nq-train_gold_info.json.gz",
@@ -185,6 +198,13 @@ RESOURCES_MAP = {
         "desc": "Retrieval results of NQ train dataset for the encoder trained on NQ",
         "license_files": NQ_LICENSE_FILES,
     },
+    "data.retriever_results.nq.single-adv-hn.test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever_results/single-adv-hn/nq-test.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "Retrieval results of NQ test dataset for the encoder trained on NQ + adversarial hard negatives",
+        "license_files": NQ_LICENSE_FILES,
+    },
     "checkpoint.retriever.single.nq.bert-base-encoder": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/checkpoint/retriever/single/nq/hf_bert_base.cp",
         "original_ext": ".cp",
@@ -196,6 +216,13 @@ RESOURCES_MAP = {
         "original_ext": ".cp",
         "compressed": False,
         "desc": "Biencoder weights trained on multi set data and HF bert-base-uncased model",
+    },
+    "checkpoint.retriever.single-adv-hn.nq.bert-base-encoder": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/checkpoint/retriver/single-adv-hn/nq/hf_bert_base.cp",
+        "original_ext": ".cp",
+        "compressed": False,
+        "desc": "Biencoder weights trained on the original DPR NQ data combined with adversarial hard negatives (See data.retriever.nq-adv-hn-train resource). "
+        "The model is HF bert-base-uncased",
     },
     "data.reader.nq.single.train": {
         "s3_url": [
@@ -321,60 +348,76 @@ RESOURCES_MAP = {
 
 
 def unpack(gzip_file: str, out_file: str):
-    print("Uncompressing ", gzip_file)
+    logger.info("Uncompressing %s", gzip_file)
     input = gzip.GzipFile(gzip_file, "rb")
     s = input.read()
     input.close()
     output = open(out_file, "wb")
     output.write(s)
     output.close()
-    print("Saved to ", out_file)
+    logger.info(" Saved to %s", out_file)
 
 
 def download_resource(
     s3_url: str, original_ext: str, compressed: bool, resource_key: str, out_dir: str
-) -> str:
-    print("Loading from ", s3_url)
-
-    # create local dir
+) -> Tuple[str, str]:
+    logger.info("Requested resource from %s", s3_url)
     path_names = resource_key.split(".")
 
-    root_dir = out_dir if out_dir else "./"
+    if out_dir:
+        root_dir = out_dir
+    else:
+        # since hydra overrides the location for the 'current dir' for every run and we don't want to duplicate
+        # resources multiple times, remove the current folder's volatile part
+        root_dir = os.path.abspath("./")
+        if "/outputs/" in root_dir:
+            root_dir = root_dir[: root_dir.index("/outputs/")]
+
+    logger.info("Download root_dir %s", root_dir)
+
     save_root = os.path.join(
-        root_dir, *path_names[:-1]
+        root_dir, "downloads", *path_names[:-1]
     )  # last segment is for file name
 
     pathlib.Path(save_root).mkdir(parents=True, exist_ok=True)
 
-    local_file = os.path.join(
-        save_root, path_names[-1] + (".tmp" if compressed else original_ext)
+    local_file_uncompressed = os.path.abspath(
+        os.path.join(save_root, path_names[-1] + original_ext)
     )
+    logger.info("File to be downloaded as %s", local_file_uncompressed)
 
-    if os.path.exists(local_file):
-        print("File already exist ", local_file)
-        return save_root
+    if os.path.exists(local_file_uncompressed):
+        logger.info("File already exist %s", local_file_uncompressed)
+        return save_root, local_file_uncompressed
+
+    local_file = os.path.abspath(
+        os.path.join(
+            save_root, path_names[-1] + (".tmp" if compressed else original_ext)
+        )
+    )
 
     wget.download(s3_url, out=local_file)
 
-    print("Saved to ", local_file)
+    logger.info("Downloaded to %s", local_file)
 
     if compressed:
         uncompressed_file = os.path.join(save_root, path_names[-1] + original_ext)
         unpack(local_file, uncompressed_file)
         os.remove(local_file)
-    return save_root
+        local_file = uncompressed_file
+    return save_root, local_file
 
 
 def download_file(s3_url: str, out_dir: str, file_name: str):
-    print("Loading from ", s3_url)
+    logger.info("Loading from %s", s3_url)
     local_file = os.path.join(out_dir, file_name)
 
     if os.path.exists(local_file):
-        print("File already exist ", local_file)
+        logger.info("File already exist %s", local_file)
         return
 
     wget.download(s3_url, out=local_file)
-    print("Saved to ", local_file)
+    logger.info("Downloaded to %s", local_file)
 
 
 def download(resource_key: str, out_dir: str = None):
@@ -385,37 +428,39 @@ def download(resource_key: str, out_dir: str = None):
             for key in resources:
                 download(key, out_dir)
         else:
-            print("no resources found for specified key")
-        return
+            logger.info("no resources found for specified key")
+        return []
     download_info = RESOURCES_MAP[resource_key]
 
     s3_url = download_info["s3_url"]
 
     save_root_dir = None
+    data_files = []
     if isinstance(s3_url, list):
         for i, url in enumerate(s3_url):
-            save_root_dir = download_resource(
+            save_root_dir, local_file = download_resource(
                 url,
                 download_info["original_ext"],
                 download_info["compressed"],
                 "{}_{}".format(resource_key, i),
                 out_dir,
             )
+            data_files.append(local_file)
     else:
-        save_root_dir = download_resource(
+        save_root_dir, local_file = download_resource(
             s3_url,
             download_info["original_ext"],
             download_info["compressed"],
             resource_key,
             out_dir,
         )
+        data_files.append(local_file)
 
     license_files = download_info.get("license_files", None)
-    if not license_files:
-        return
-
-    download_file(license_files[0], save_root_dir, "LICENSE")
-    download_file(license_files[1], save_root_dir, "README")
+    if license_files:
+        download_file(license_files[0], save_root_dir, "LICENSE")
+        download_file(license_files[1], save_root_dir, "README")
+    return data_files
 
 
 def main():
@@ -438,7 +483,7 @@ def main():
     else:
         print("Please specify resource value. Possible options are:")
         for k, v in RESOURCES_MAP.items():
-            print("Resource key={}  description: {}".format(k, v["desc"]))
+            print("Resource key=%s  :  %s", k, v["desc"])
 
 
 if __name__ == "__main__":
