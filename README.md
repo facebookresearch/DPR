@@ -45,9 +45,13 @@ New vs old top-k documents retrieval accuracy on NQ test set (3610 questions).
 | 100  | 85.87      |    87.29 |
 
 New model downloadable resources names (see how to use download_data script below):
+
 Checkpoint: checkpoint.retriever.single-adv-hn.nq.bert-base-encoder
+
 New training data: data.retriever.nq-adv-hn-train
+
 Retriever resutls for NQ test set: data.retriever_results.nq.single-adv-hn.test
+
 Wikipedia embeddings: data.retriever_results.nq.single-adv-hn.wikipedia_passages
 
 
