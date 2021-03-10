@@ -48,6 +48,7 @@ New model downloadable resources names (see how to use download_data script belo
 Checkpoint: checkpoint.retriever.single-adv-hn.nq.bert-base-encoder
 New training data: data.retriever.nq-adv-hn-train
 Retriever resutls for NQ test set: data.retriever_results.nq.single-adv-hn.test
+Wikipedia embeddings: data.retriever_results.nq.single-adv-hn.wikipedia_passages
 
 
 ## Installation
@@ -168,7 +169,7 @@ or just the source name from conf/ctx_sources/default_sources.yaml file.
 
 Note: you can use much large batch size here compared to training mode. For example, setting batch_size 128 for 2 GPU(16gb) server should work fine.
 You can download already generated wikipedia embeddings fro our original model (trained on NQ dataset) using resource key 'data.retriever_results.nq.single.wikipedia_passages'. 
-Embeddings for a better model to be provided soon.
+Embeddings resource name for the new better model 'data.retriever_results.nq.single-adv-hn.wikipedia_passages'
 
 We generally use the following params on 50 2-gpu nodes: batch_size=128 shard_id=0 num_shards=50
 
