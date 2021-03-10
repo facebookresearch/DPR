@@ -23,14 +23,14 @@ If you find this paper or this code useful, please cite this paper:
 3. Related data pre- and post- processing tools.
 4. Dense retriever component for inference time logic is based on FAISS index.
 
-## New (version=1.0.0) release
+## New (March 20201) release
 DPR codeabse is upgraded with a number of enhancements and new models.
 Major changes:
 1. [Hydra](https://hydra.cc/)-based configuration for all the command line tools exept the data loader (to be converted soon)
 2. Pluggable data processing layer to support custom datasets
 3. New retrieval model checkpoint with better perfromance.
 
-## New (version=1.0.0) retrieval model
+## New (March 20201) retrieval model
 A new retrieval trained on NQ dataset only (and previous DPR index) is now provided: a new checkpoint, training data, retrieval results and (soon to be provided) embeddings.
 It is trained on the original DPR NQ train set and its another version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
 Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data. This training scheme gives a nice retrieval performance boost.
