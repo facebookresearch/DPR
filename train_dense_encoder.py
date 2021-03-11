@@ -194,7 +194,7 @@ class BiEncoderTrainer(object):
             )
         else:
             scheduler = get_schedule_linear(
-                self.optimizer, warmup_steps, total_updates, total_updates
+                self.optimizer, warmup_steps, total_updates
             )
 
         eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
