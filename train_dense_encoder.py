@@ -259,7 +259,7 @@ class BiEncoderTrainer(object):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
             logger.info("Eval step: %d ,rnk=%s", i, cfg.local_rank)
-            biencoder_input = BiEncoder.create_biencoder_input2(
+            biencoder_input = BiEncoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -350,7 +350,7 @@ class BiEncoderTrainer(object):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
 
-            biencoder_input = BiEncoder.create_biencoder_input2(
+            biencoder_input = BiEncoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -497,7 +497,7 @@ class BiEncoderTrainer(object):
             data_iteration = train_data_iterator.get_iteration()
             random.seed(seed + epoch + data_iteration)
 
-            biencoder_batch = BiEncoder.create_biencoder_input2(
+            biencoder_batch = BiEncoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
