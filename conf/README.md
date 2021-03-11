@@ -11,7 +11,9 @@ All DPR tools configuration parameters are now split between different config gr
 
 Each tools's (train_dense_encoder.py, generate_dense_embeddings.py, dense_retriever.py and train_reader.py) main method has now a hydra @hydra.main decorator with the name of the configuration file in the conf/ dir.
 For example, dense_retriever.py takes all its parameters from conf/dense_retriever.yaml file.
-Every tool's configuration files refers to other configuration files via "defaults:" parameter. It is called a configuration group in Hydra ()
+Every tool's configuration files refers to other configuration files via "defaults:" parameter. 
+It is called a [configuration group](https://hydra.cc/docs/tutorials/structured_config/config_groups) in Hydra.
+
 Let's take a look at dense_retriever.py's configuration:
 
 
