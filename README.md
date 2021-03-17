@@ -33,7 +33,7 @@ Major changes:
 ## New (March 2021) retrieval model
 A new bi-encoder model trained on NQ dataset only is now provided: a new checkpoint, training data, retrieval results and wikipedia embeddings.
 It is trained on the original DPR NQ train set and its version where hard negatives are mined using DPR index itself using the previous NQ checkpoint.
-Bi-encoder trained from scratch using this new training data combined with our original NQ trianing data. This training scheme gives a nice retrieval performance boost.
+A Bi-encoder model is trained from scratch using this new training data combined with our original NQ training data. This training scheme gives a nice retrieval performance boost.
 
 New vs old top-k documents retrieval accuracy on NQ test set (3610 questions).
 
