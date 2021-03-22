@@ -193,9 +193,7 @@ class BiEncoderTrainer(object):
                 steps_shift=shift,
             )
         else:
-            scheduler = get_schedule_linear(
-                self.optimizer, warmup_steps, total_updates, total_updates
-            )
+            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates)
 
         eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
         logger.info("  Eval step = %d", eval_step)
@@ -254,12 +252,14 @@ class BiEncoderTrainer(object):
         log_result_step = cfg.train.log_batch_step
         batches = 0
         dataset = 0
+        biencoder = get_model_obj(self.biencoder)
 
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
             logger.info("Eval step: %d ,rnk=%s", i, cfg.local_rank)
-            biencoder_input = BiEncoder.create_biencoder_input(
+
+            biencoder_input = biencoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -339,6 +339,7 @@ class BiEncoderTrainer(object):
 
         log_result_step = cfg.train.log_batch_step
         dataset = 0
+        biencoder = get_model_obj(self.biencoder)
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             # samples += 1
             if (
@@ -350,7 +351,7 @@ class BiEncoderTrainer(object):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
 
-            biencoder_input = BiEncoder.create_biencoder_input(
+            biencoder_input = biencoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -481,6 +482,7 @@ class BiEncoderTrainer(object):
         epoch_batches = train_data_iterator.max_iterations
         data_iteration = 0
 
+        biencoder = get_model_obj(self.biencoder)
         dataset = 0
         for i, samples_batch in enumerate(
             train_data_iterator.iterate_ds_data(epoch=epoch)
@@ -497,7 +499,7 @@ class BiEncoderTrainer(object):
             data_iteration = train_data_iterator.get_iteration()
             random.seed(seed + epoch + data_iteration)
 
-            biencoder_batch = BiEncoder.create_biencoder_input(
+            biencoder_batch = biencoder.create_biencoder_input(
                 samples_batch,
                 self.tensorizer,
                 True,
@@ -776,7 +778,6 @@ def _do_biencoder_fwd_pass(
         input.hard_negatives,
         loss_scale=loss_scale,
     )
-
     is_correct = is_correct.sum().item()
 
     if cfg.n_gpu > 1:

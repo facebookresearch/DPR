@@ -61,21 +61,33 @@ def generate_question_vectors(
             if query_token:
                 # TODO: tmp workaround for EL, remove or revise
                 if query_token == "[START_ENT]":
-                    batch_token_tensors = [
+                    batch_tensors = [
                         _select_span_with_token(q, tensorizer, token_str=query_token)
                         for q in batch_questions
                     ]
                 else:
-                    batch_token_tensors = [
+                    batch_tensors = [
                         tensorizer.text_to_tensor(" ".join([query_token, q]))
                         for q in batch_questions
                     ]
+            elif isinstance(batch_questions[0], T):
+                batch_tensors = [q for q in batch_questions]
             else:
-                batch_token_tensors = [
-                    tensorizer.text_to_tensor(q) for q in batch_questions
+                batch_tensors = [tensorizer.text_to_tensor(q) for q in batch_questions]
+
+            max_vector_len = max(q_t.size(1) for q_t in batch_tensors)
+            min_vector_len = min(q_t.size(1) for q_t in batch_tensors)
+
+            # TODO: this only works for Wav2vec pipeline
+            if max_vector_len != min_vector_len:
+                # TODO: _pad_to_len move to utils
+                from dpr.models.reader import _pad_to_len
+
+                batch_tensors = [
+                    _pad_to_len(q.squeeze(0), 0, max_vector_len) for q in batch_tensors
                 ]
 
-            q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
+            q_ids_batch = torch.stack(batch_tensors, dim=0).cuda()
             q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
             q_attn_mask = tensorizer.get_attn_mask(q_ids_batch)
 
@@ -295,6 +307,8 @@ def main(cfg: DictConfig):
         cfg.encoder.encoder_model_type, cfg, inference_only=True
     )
 
+    logger.info("Loading saved model state ...")
+    encoder.load_state(saved_state, strict=False)
     encoder_path = cfg.encoder_path
     if encoder_path:
         logger.info("Selecting encoder: %s", encoder_path)
@@ -307,21 +321,7 @@ def main(cfg: DictConfig):
         encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16
     )
     encoder.eval()
-
-    # load weights from the model file
     model_to_load = get_model_obj(encoder)
-    logger.info("Loading saved model state ...")
-
-    encoder_prefix = (encoder_path if encoder_path else "question_model") + "."
-    prefix_len = len(encoder_prefix)
-
-    logger.info("Encoder state prefix %s", encoder_prefix)
-    question_encoder_state = {
-        key[prefix_len:]: value
-        for (key, value) in saved_state.model_dict.items()
-        if key.startswith(encoder_prefix)
-    }
-    model_to_load.load_state_dict(question_encoder_state)
     vector_size = model_to_load.get_out_size()
     logger.info("Encoder vector_size=%d", vector_size)
 
@@ -337,12 +337,20 @@ def main(cfg: DictConfig):
     logger.info("qa_dataset: %s", ds_key)
 
     qa_src = hydra.utils.instantiate(cfg.datasets[ds_key])
+
     qa_src.load_data()
 
-    for ds_item in qa_src.data:
-        question, answers = ds_item.query, ds_item.answers
+    total_queries = len(qa_src)
+
+    for i in range(total_queries):
+        qa_sample = qa_src[i]
+        question, answers = qa_sample.query, qa_sample.answers
         questions.append(question)
         question_answers.append(answers)
+
+    # TODO: tmp
+    # length_buckets = qa_src.length_buckets
+    # logger.info("!!! dev length_buckets %s", length_buckets)
 
     index = hydra.utils.instantiate(cfg.indexers[cfg.indexer])
     logger.info("Index class %s ", type(index))

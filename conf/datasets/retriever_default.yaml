@@ -2,7 +2,8 @@
 
 nq_test:
   _target_: dpr.data.retriever_data.CsvQASrc
-  file: data.retriever.qas.nq-test
+  #file: data.retriever.qas.nq-test
+  file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
 
 nq_train:
   _target_: dpr.data.retriever_data.CsvQASrc
@@ -23,3 +24,14 @@ trivia_train:
 trivia_dev:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.trivia-dev
+
+nq_audio_test:
+  _target_: dpr.data.speech_data.WavTextQADataset
+  #file: data.retriever.qas.nq-test
+  file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
+  wav_tsv_file: /checkpoint/vladk/speechqa/data/test/test.tsv
+
+nq_tts_asr_test:
+  _target_: dpr.data.retriever_data.TTS_ASR_QASrc
+  file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
+  trans_file: /checkpoint/vladk/speechqa/data/test/transcriptions/hypo.word-960h_scratch.pt-test.txt

@@ -142,10 +142,10 @@ class JsonQADataset(Dataset):
         self.data_files = []
         self.data = []
         self.normalize = normalize
-        logger.info("Data files: %s", self.data_files)
 
     def load_data(self):
         self.data_files = get_dpr_files(self.file)
+        logger.info("Data files: %s", self.data_files)
         data = read_data_from_json_files(self.data_files)
         # filter those without positive ctx
         self.data = [r for r in data if len(r["positive_ctxs"]) > 0]

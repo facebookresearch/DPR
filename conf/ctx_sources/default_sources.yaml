@@ -2,5 +2,6 @@
 
 dpr_wiki:
   _target_: dpr.data.retriever_data.CsvCtxSrc
-  file: data.wikipedia_split.psgs_w100
+  #file: data.wikipedia_split.psgs_w100
+  file: /private/home/vladk/data/wikipedia/wiki_passages/psgs_w100.tsv
   id_prefix: 'wiki:'

@@ -11,6 +11,8 @@ Command line arguments utils
 
 
 import logging
+import subprocess
+
 import numpy as np
 import os
 import random
@@ -96,6 +98,54 @@ def setup_cfg_gpu(cfg):
     )
     logger.info("16-bits training: %s ", cfg.fp16)
     return cfg
+
+
+def _infer_slurm_init(cfg):
+
+    # if cfg.distributed_port
+
+    node_list = os.environ.get("SLURM_STEP_NODELIST")
+    if node_list is None:
+        node_list = os.environ.get("SLURM_JOB_NODELIST")
+    logger.info("SLURM_JOB_NODELIST: %s", node_list)
+
+    # cfg.n_gpu
+    # cfg.local_rank
+    # cfg.distributed_world_size
+
+    if node_list is not None:
+        try:
+            hostnames = subprocess.check_output(
+                ["scontrol", "show", "hostnames", node_list]
+            )
+            distributed_init_method = "tcp://{host}:{port}".format(
+                host=hostnames.split()[0].decode("utf-8"),
+                port=cfg.distributed_port,
+            )
+            nnodes = int(os.environ.get("SLURM_NNODES"))
+
+            logger.info("SLURM_NNODES: %s", nnodes)
+
+            ntasks_per_node = os.environ.get("SLURM_NTASKS_PER_NODE")
+            if ntasks_per_node is not None:
+                ntasks_per_node = int(ntasks_per_node)
+            else:
+                ntasks = int(os.environ.get("SLURM_NTASKS"))
+                nnodes = int(os.environ.get("SLURM_NNODES"))
+                assert ntasks % nnodes == 0
+                ntasks_per_node = int(ntasks / nnodes)
+            if ntasks_per_node == 1:
+                gpus_per_node = torch.cuda.device_count()
+                node_id = int(os.environ.get("SLURM_NODEID"))
+                cfg.distributed_rank = node_id * gpus_per_node
+                cfg.distributed_world_size = nnodes * gpus_per_node
+            # cfg.distributed_rank = int(os.environ.get("SLURM_PROCID"))
+            # cfg.device_id = int(os.environ.get("SLURM_LOCALID"))
+
+        except subprocess.CalledProcessError as e:  # scontrol failed
+            raise e
+        except FileNotFoundError:  # Slurm is not installed
+            pass
 
 
 def setup_logger(logger):

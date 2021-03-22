@@ -3,7 +3,7 @@ import csv
 import json
 import logging
 import pickle
-from typing import Dict
+from typing import Dict, List
 
 import hydra
 import jsonlines
@@ -20,8 +20,15 @@ from dpr.data.biencoder_data import (
 )
 
 logger = logging.getLogger(__name__)
-QASample = collections.namedtuple("QuerySample", ["query", "id", "answers"])
+
 TableChunk = collections.namedtuple("TableChunk", ["text", "title", "table_id"])
+
+
+class QASample:
+    def __init__(self, query: str, id, answers: List[str]):
+        self.query = query
+        self.id = id
+        self.answers = answers
 
 
 class RetrieverData(torch.utils.data.Dataset):

@@ -15,10 +15,19 @@ from typing import Tuple
 import torch
 from torch import Tensor as T
 from torch import nn
-from transformers.modeling_bert import BertConfig, BertModel
-from transformers.optimization import AdamW
-from transformers.tokenization_bert import BertTokenizer
-from transformers.tokenization_roberta import RobertaTokenizer
+
+import transformers
+
+if transformers.__version__.startswith("4"):
+    from transformers import BertConfig, BertModel
+    from transformers import AdamW
+    from transformers import BertTokenizer
+    from transformers import RobertaTokenizer
+else:
+    from transformers.modeling_bert import BertConfig, BertModel
+    from transformers.optimization import AdamW
+    from transformers.tokenization_bert import BertTokenizer
+    from transformers.tokenization_roberta import RobertaTokenizer
 
 from dpr.models.biencoder import BiEncoder
 from dpr.utils.data_utils import Tensorizer
@@ -218,19 +227,32 @@ class HFBertEncoder(BertModel):
         attention_mask: T,
         representation_token_pos=0,
     ) -> Tuple[T, ...]:
-        if self.config.output_hidden_states:
-            sequence_output, pooled_output, hidden_states = super().forward(
-                input_ids=input_ids,
-                token_type_ids=token_type_ids,
-                attention_mask=attention_mask,
-            )
+
+        out = super().forward(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            attention_mask=attention_mask,
+        )
+
+        # HF >4.0 version support
+        if transformers.__version__.startswith("4") and isinstance(
+            out,
+            transformers.modeling_outputs.BaseModelOutputWithPoolingAndCrossAttentions,
+        ):
+            sequence_output = out.last_hidden_state
+            pooled_output = None
+            hidden_states = out.hidden_states
+
+        elif self.config.output_hidden_states:
+            sequence_output, pooled_output, hidden_states = out
         else:
             hidden_states = None
-            sequence_output, pooled_output = super().forward(
+            out = super().forward(
                 input_ids=input_ids,
                 token_type_ids=token_type_ids,
                 attention_mask=attention_mask,
             )
+            sequence_output, pooled_output = out
 
         if isinstance(representation_token_pos, int):
             pooled_output = sequence_output[:, representation_token_pos, :]
@@ -252,6 +274,7 @@ class HFBertEncoder(BertModel):
             pooled_output = self.encode_proj(pooled_output)
         return sequence_output, pooled_output, hidden_states
 
+    # TODO: make a super class for all encoders
     def get_out_size(self):
         if self.encode_proj:
             return self.encode_proj.out_features

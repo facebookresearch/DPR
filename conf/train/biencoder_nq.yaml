@@ -5,7 +5,7 @@ dev_batch_size: 64
 adam_eps: 1e-8
 adam_betas: (0.9, 0.999)
 max_grad_norm: 2.0
-log_batch_step: 100
+log_batch_step: 10
 train_rolling_loss_step: 100
 weight_decay: 0.0
 learning_rate: 2e-5

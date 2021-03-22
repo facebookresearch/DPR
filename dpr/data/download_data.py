@@ -177,6 +177,18 @@ RESOURCES_MAP = {
         "desc": "Encoded wikipedia files using a biencoder checkpoint("
         "checkpoint.retriever.single.nq.bert-base-encoder) trained on NQ dataset ",
     },
+    "data.retriever_results.nq.single-adv-hn.wikipedia_passages": {
+        "s3_url": [
+            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single-adv-hn/nq/wiki_passages_{}".format(
+                i
+            )
+            for i in range(50)
+        ],
+        "original_ext": ".pkl",
+        "compressed": False,
+        "desc": "Encoded wikipedia files using a single-adv-hn checkpoint("
+        "checkpoint.retriever.single.nq.bert-base-encoder) trained on NQ dataset ",
+    },
     "data.retriever_results.nq.single.test": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever_results/single/nq-test.json.gz",
         "original_ext": ".json",
