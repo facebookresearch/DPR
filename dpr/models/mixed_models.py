@@ -10,16 +10,17 @@ from torch import nn
 
 from dpr.data.speech_data import BiEncoderMixedSample
 from dpr.models.biencoder import BiEncoder, BiEncoderBatch
-from dpr.models.fairseq_models import Wav2Vec2Encoder
+
 from dpr.models.hf_models import (
     HFBertEncoder,
     get_optimizer,
     get_bert_tensorizer,
     get_hf_model_param_grouping,
     get_optimizer_grouped,
-    Wav2Vec2HFEncoder,
     get_wav2vec_encoder,
 )
+
+from dpr.models.fairseq_models import Wav2Vec2Encoder, HubertEncoder
 from dpr.utils.data_utils import Tensorizer
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kwargs):
     dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
-
     logger.info("Initializing Mixed Encoder")
 
     if cfg.encoder.pretrained_wav2vec_model_cfg:
@@ -40,7 +40,15 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
         )
 
     elif cfg.encoder.wav2vec_cp_file:  # fairseq model
-        question_encoder = Wav2Vec2Encoder(
+
+        if cfg.encoder.encoder_model_type == "mixed_hf_bert_wav2vec":
+            audio_cls = Wav2Vec2Encoder
+        elif cfg.encoder.encoder_model_type == "mixed_hf_bert_hubert":
+            audio_cls = HubertEncoder
+        else:
+            raise ValueError(f"{cfg.encoder.encoder_model_type} is not supported.")
+
+        question_encoder = audio_cls(
             cfg.encoder.wav2vec_cp_file,
             cfg.encoder.wav2vec_apply_mask,
             cfg.encoder.wav2vec_max_audio_t,
@@ -55,7 +63,7 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
         projection_dim=cfg.encoder.projection_dim,
         dropout=dropout,
         pretrained=cfg.encoder.pretrained,
-        **kwargs
+        **kwargs,
     )
 
     fix_ctx_encoder = cfg.fix_ctx_encoder if hasattr(cfg, "fix_ctx_encoder") else False
