@@ -113,6 +113,7 @@ class Wav2Vec2Encoder(nn.Module):
         _token_type_ids: T,
         attention_mask: T,
         representation_token_pos=0,
+        output_layer=None
     ) -> Tuple[T, ...]:
         mask = self.apply_mask and self.training
 
@@ -175,3 +176,108 @@ class Wav2Vec2Encoder(nn.Module):
 
     def get_out_size(self):
         return self.wav2vec_model.post_extract_proj.out_features
+
+
+class HubertEncoder(nn.Module):
+    def __init__(
+        self,
+        cp_file: str,
+        apply_mask: bool,
+        max_audio_t: int,
+        use_tanh: bool = True,
+        dropout: float = 0.0,
+    ):
+        super(HubertEncoder, self).__init__()
+        models, cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task([cp_file])
+        self.model = models[0]
+        logger.info(
+            "Initialized HubertEncoder model as %s, from cp=%s, use_tanh=%s, dropout=%s",
+            type(self.model),
+            cp_file,
+            use_tanh,
+            dropout,
+        )
+        self.hidden_size = self.model.post_extract_proj.out_features
+
+        self.max_audio_t = max_audio_t
+        logger.info("HubertEncoder max_audio_t %s", self.max_audio_t)
+
+        self.dense = nn.Linear(self.max_audio_t, self.hidden_size)
+        self.activation = nn.Tanh()
+        self.dropout = nn.Dropout(dropout)
+
+        self.use_tanh = use_tanh
+
+        # TODO: remove after debug
+        self.tmp_long_audio_samples = 0
+
+    def forward(
+        self,
+        input_ids: T,
+        _token_type_ids: T,
+        padding_mask: T,
+        representation_token_pos=0,
+        output_layer=None
+    ) -> Tuple[T, ...]:
+        mask = self.apply_mask and self.training
+        
+        # TODO: remove after debug
+        torch.cuda.ipc_collect()
+
+        features, padding_mask = self.model.extract_features(
+            input_ids, padding_mask=padding_mask, mask=mask, output_layer=output_layer
+        )
+
+        bsz, seq_len, feature_dim = features.size()
+        assert self.hidden_size == feature_dim
+
+        flat_encoded_out = features.reshape(B, -1)
+        if seq_len > self.max_audio_t:
+            logger.warning("Audio length exceeds > max_audio_t: %d>%d", T, self.max_audio_t)
+
+        # TODO: make a util method
+        def pad_to_len(
+            seq,
+            max_len,
+        ):
+            s_len = seq.size(0)
+            # TODO: remove after debug
+            if s_len > max_len:
+                self.tmp_long_audio_samples += 1
+                if self.tmp_long_audio_samples % 100 == 0:
+                    logger.info(
+                        "tmp_long_audio_samples %s", self.tmp_long_audio_samples
+                    )
+
+                return seq[0:max_len]
+            r = torch.cat(
+                [
+                    seq,
+                    torch.Tensor()
+                    .new_full((max_len - s_len,), 0, dtype=torch.float)
+                    .to(flat_encoded_out.device),
+                ],
+                dim=0,
+            )
+            return r
+
+        flat_encoded_out = torch.cat(
+            [
+                pad_to_len(flat_encoded_out[i], self.max_audio_t).view(1, -1)
+                for i in range(B)
+            ],
+            dim=0,
+        )
+
+        pooled_output = self.dense(flat_encoded_out)
+
+        if self.use_tanh:
+            pooled_output = self.activation(pooled_output)
+
+        if self.training:
+            pooled_output = self.dropout(pooled_output)
+
+        return None, pooled_output, None
+
+    def get_out_size(self):
+        return self.hidden_size

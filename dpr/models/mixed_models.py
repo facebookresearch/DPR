@@ -7,7 +7,7 @@ from typing import List
 
 from dpr.data.speech_data import BiEncoderMixedSample
 from dpr.models.biencoder import BiEncoder, BiEncoderBatch
-from dpr.models.fairseq_models import Wav2Vec2Encoder
+from dpr.models.fairseq_models import Wav2Vec2Encoder, HubertEncoder
 from dpr.models.hf_models import HFBertEncoder, get_optimizer, get_bert_tensorizer
 from dpr.utils.data_utils import Tensorizer
 
@@ -17,13 +17,24 @@ logger = logging.getLogger(__name__)
 def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kwargs):
     dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
 
-    question_encoder = Wav2Vec2Encoder(
-        cfg.encoder.wav2vec_cp_file,
-        cfg.encoder.wav2vec_apply_mask,
-        cfg.encoder.max_audio_t,
-        use_tanh=cfg.encoder.use_tanh,
-        dropout=cfg.encoder.dropout,
-    )
+    if cfg.encoder.encoder_model_type == "mixed_hf_bert_wav2vec":
+        question_encoder = Wav2Vec2Encoder(
+            cfg.encoder.wav2vec_cp_file,
+            cfg.encoder.wav2vec_apply_mask,
+            cfg.encoder.max_audio_t,
+            use_tanh=cfg.encoder.use_tanh,
+            dropout=cfg.encoder.dropout,
+        )
+    elif cfg.encoder.encoder_model_type == "mixed_hf_bert_hubert":
+        question_encoder = HubertEncoder(
+            cfg.encoder.cp_file,
+            cfg.encoder.apply_mask,
+            cfg.encoder.max_audio_t,
+            use_tanh=cfg.encoder.use_tanh,
+            dropout=cfg.encoder.dropout,
+        )
+    else:
+        raise ValueError(f"{cfg.encoder.encoder_model_type} is not supported.")
 
     ctx_encoder = HFBertEncoder.init_encoder(
         cfg.encoder.pretrained_model_cfg,

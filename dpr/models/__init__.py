@@ -75,6 +75,7 @@ BIENCODER_INITIALIZERS = {
     "pytext_bert": init_pytext_bert_biencoder,
     "fairseq_roberta": init_fairseq_roberta_biencoder,
     "mixed_hf_bert_wav2vec": init_audio_mixed_biencoder_components,
+    "mixed_hf_bert_hubert": init_audio_mixed_biencoder_components,
 }
 
 READER_INITIALIZERS = {
