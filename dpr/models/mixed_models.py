@@ -4,11 +4,22 @@ import random
 import numpy as np
 import torch
 from typing import List
+from torch import Tensor as T
+from torch import nn
+
 
 from dpr.data.speech_data import BiEncoderMixedSample
 from dpr.models.biencoder import BiEncoder, BiEncoderBatch
 from dpr.models.fairseq_models import Wav2Vec2Encoder
-from dpr.models.hf_models import HFBertEncoder, get_optimizer, get_bert_tensorizer
+from dpr.models.hf_models import (
+    HFBertEncoder,
+    get_optimizer,
+    get_bert_tensorizer,
+    get_hf_model_param_grouping,
+    get_optimizer_grouped,
+    Wav2Vec2HFEncoder,
+    get_wav2vec_encoder,
+)
 from dpr.utils.data_utils import Tensorizer
 
 logger = logging.getLogger(__name__)
@@ -17,13 +28,27 @@ logger = logging.getLogger(__name__)
 def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kwargs):
     dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
 
-    question_encoder = Wav2Vec2Encoder(
-        cfg.encoder.wav2vec_cp_file,
-        cfg.encoder.wav2vec_apply_mask,
-        cfg.encoder.max_audio_t,
-        use_tanh=cfg.encoder.use_tanh,
-        dropout=cfg.encoder.dropout,
-    )
+    logger.info("Initializing Mixed Encoder")
+
+    if cfg.encoder.pretrained_wav2vec_model_cfg:
+        question_encoder = get_wav2vec_encoder(
+            cfg.encoder.pretrained_wav2vec_model_cfg,
+            cfg.encoder.wav2vec_max_audio_t,
+            cfg.encoder.wav2_vec_extra_proj_dim,
+            cfg.encoder.wav2vec_dropout,
+            cfg.encoder.wav2vec_use_activation,
+        )
+
+    elif cfg.encoder.wav2vec_cp_file:  # fairseq model
+        question_encoder = Wav2Vec2Encoder(
+            cfg.encoder.wav2vec_cp_file,
+            cfg.encoder.wav2vec_apply_mask,
+            cfg.encoder.wav2vec_max_audio_t,
+            use_tanh=cfg.encoder.wav2vec_use_activation,
+            dropout=cfg.encoder.wav2vec_dropout,
+        )
+    else:
+        raise RuntimeError("Either pretrained_wav2vec_model_cfg or wav2vec_cp_file should be defined")
 
     ctx_encoder = HFBertEncoder.init_encoder(
         cfg.encoder.pretrained_model_cfg,
@@ -35,22 +60,33 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
 
     fix_ctx_encoder = cfg.fix_ctx_encoder if hasattr(cfg, "fix_ctx_encoder") else False
 
-    biencoder = MixedBiEncoder(
-        question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder
-    )
-
-    optimizer = (
-        get_optimizer(
-            biencoder,
-            learning_rate=cfg.train.learning_rate,
-            adam_eps=cfg.train.adam_eps,
-            weight_decay=cfg.train.weight_decay,
-        )
-        if not inference_only
-        else None
-    )
-
+    biencoder = MixedBiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
     tensorizer = get_bert_tensorizer(cfg)
+
+    if not hasattr(cfg, "train"):
+        return tensorizer, biencoder, None
+
+    lr = cfg.train.learning_rate
+    if cfg.encoder.audio_encoder_lr_factor != 0:
+        groups = get_hf_model_param_grouping(biencoder.ctx_model, weight_decay=cfg.train.weight_decay)
+        q_groups = get_hf_model_param_grouping(biencoder.question_model, weight_decay=cfg.train.weight_decay)
+        for g in q_groups:
+            g["lr"] = lr * cfg.encoder.audio_encoder_lr_factor
+            logger.info("Setting lr=%s for wav2vec encoder param group", g["lr"])
+            groups.append(g)
+        optimizer = get_optimizer_grouped(groups, learning_rate=lr, adam_eps=cfg.train.adam_eps)
+    else:
+        optimizer = (
+            get_optimizer(
+                biencoder,
+                learning_rate=lr,
+                adam_eps=cfg.train.adam_eps,
+                weight_decay=cfg.train.weight_decay,
+            )
+            if not inference_only
+            else None
+        )
+
     return tensorizer, biencoder, optimizer
 
 
@@ -118,9 +154,7 @@ class MixedBiEncoder(BiEncoder):
             current_ctxs_len = len(ctx_tensors)
 
             sample_ctxs_tensors = [
-                tensorizer.text_to_tensor(
-                    ctx.text, title=ctx.title if (insert_title and ctx.title) else None
-                )
+                tensorizer.text_to_tensor(ctx.text, title=ctx.title if (insert_title and ctx.title) else None)
                 for ctx in all_ctxs
             ]
 
@@ -141,9 +175,7 @@ class MixedBiEncoder(BiEncoder):
         # TODO: _pad_to_len move to utils
         from dpr.models.reader import _pad_to_len
 
-        question_tensors = [
-            _pad_to_len(q.squeeze(0), 0, max_audio_vector_len) for q in question_tensors
-        ]
+        question_tensors = [_pad_to_len(q.squeeze(0), 0, max_audio_vector_len) for q in question_tensors]
 
         ctxs_tensor = torch.cat([ctx.view(1, -1) for ctx in ctx_tensors], dim=0)
         questions_tensor = torch.cat([q.view(1, -1) for q in question_tensors], dim=0)

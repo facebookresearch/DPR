@@ -67,9 +67,7 @@ class WavJsonTextDataset(JsonQADataset):
         # filter those without positive ctx
         self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
         logger.info("Total cleaned data size: {}".format(len(self.data)))
-        self.id_to_audio_file_map = _get_id_to_audio_file_map(
-            self.audio_file_prefix, self.wav_tsv_file
-        )
+        self.id_to_audio_file_map = _get_id_to_audio_file_map(self.audio_file_prefix, self.wav_tsv_file)
         logger.info("id_to_audio_file_map  size: %d", len(self.id_to_audio_file_map))
 
     def __getitem__(self, index) -> BiEncoderMixedSample:
@@ -79,7 +77,6 @@ class WavJsonTextDataset(JsonQADataset):
         audio_file = self.id_to_audio_file_map[sample_id]
 
         query_tensor = _get_audio_feats(audio_file, self.normalize_audio)
-        # logger.info("Audio query_tensor %s", query_tensor.size())
 
         if query_tensor.size(1) > self.max_features_sz:
             query_tensor = query_tensor[:, 0 : self.max_features_sz]
@@ -87,21 +84,12 @@ class WavJsonTextDataset(JsonQADataset):
             if self.cut_samples % 100 == 0:
                 logger.info("!!! cut_samples %d", self.cut_samples)
 
-        # if query_tensor.size(1) == 371519:
-        #    logger.info("!!! 371519 Audio size for file =%s", audio_file)
-
         # r.query = torchaudio.load(audio_file)
         r.query = query_tensor
 
         positive_ctxs = json_sample["positive_ctxs"]
-        negative_ctxs = (
-            json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
-        )
-        hard_negative_ctxs = (
-            json_sample["hard_negative_ctxs"]
-            if "hard_negative_ctxs" in json_sample
-            else []
-        )
+        negative_ctxs = json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
+        hard_negative_ctxs = json_sample["hard_negative_ctxs"] if "hard_negative_ctxs" in json_sample else []
 
         for ctx in positive_ctxs + negative_ctxs + hard_negative_ctxs:
             if "title" not in ctx:
@@ -146,7 +134,6 @@ class WavTextQADataset(QASrc):
         sample_id = index + 1
         audio_file = self.id_to_audio_file_map[sample_id]
         query_tensor = _get_audio_feats(audio_file, self.normalize_audio)
-        logger.info("Audio query_tensor %s", query_tensor.size())
 
         # TODO: tmp
         size = query_tensor.size(1)
@@ -175,9 +162,7 @@ class WavTextQADataset(QASrc):
                 data.append(QASample(self._process_question(question), None, answers))
 
         self.data = data
-        self.id_to_audio_file_map = _get_id_to_audio_file_map(
-            self.audio_file_prefix, self.wav_tsv_file
-        )
+        self.id_to_audio_file_map = _get_id_to_audio_file_map(self.audio_file_prefix, self.wav_tsv_file)
         logger.info("id_to_audio_file_map  size: %d", len(self.id_to_audio_file_map))
 
 
@@ -190,12 +175,14 @@ def _read_audio(fname):
 
 def _get_audio_feats(loc, normalize_audio: bool) -> T:
     x = _read_audio(loc)
+    # logger.info("Raw Audio tensor %s, %s", x.shape, x)
     with torch.no_grad():
         source = torch.from_numpy(x).float()  # .cuda()
         if normalize_audio:
             assert source.dim() == 1, source.dim()
             with torch.no_grad():
                 source = F.layer_norm(source, source.shape)
+                # logger.info("Normalized Audio tensor %s, %s", source.size(), source)
         source = source.view(1, -1)
     return source
 

@@ -35,8 +35,12 @@ nq_speech_mixed_train:
   _target_: dpr.data.speech_data.WavJsonTextDataset
   json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
   wav_tsv_file: /checkpoint/vladk/speechqa/data/train/train.tsv
+  #normalize_audio: True
+  normalize_audio: False
 
 nq_speech_mixed_dev:
   _target_: dpr.data.speech_data.WavJsonTextDataset
   json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
   wav_tsv_file: /checkpoint/vladk/speechqa/data/dev/dev.tsv
+  #normalize_audio: True
+  normalize_audio: False

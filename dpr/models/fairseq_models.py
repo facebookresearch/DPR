@@ -30,9 +30,7 @@ def get_roberta_biencoder_components(args, inference_only: bool = False, **kwarg
     question_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
     ctx_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
     biencoder = BiEncoder(question_encoder, ctx_encoder)
-    optimizer = (
-        get_fairseq_adamw_optimizer(biencoder, args) if not inference_only else None
-    )
+    optimizer = get_fairseq_adamw_optimizer(biencoder, args) if not inference_only else None
 
     tensorizer = get_roberta_tensorizer(args)
 
@@ -54,9 +52,7 @@ class RobertaEncoder(nn.Module):
         model = FaiseqRobertaModel.from_pretrained(pretrained_dir_path)
         return cls(model)
 
-    def forward(
-        self, input_ids: T, token_type_ids: T, attention_mask: T
-    ) -> Tuple[T, ...]:
+    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T) -> Tuple[T, ...]:
         roberta_out = self.fairseq_roberta.extract_features(input_ids)
         cls_out = roberta_out[:, 0, :]
         return roberta_out, cls_out, None
@@ -119,9 +115,10 @@ class Wav2Vec2Encoder(nn.Module):
         # TODO: remove after debug
         torch.cuda.ipc_collect()
 
-        wav2vec_out, pad_mask = self.wav2vec_model.extract_features(
-            input_ids, padding_mask=attention_mask, mask=mask
-        )
+        wav2vec_out, pad_mask = self.wav2vec_model.extract_features(input_ids, padding_mask=attention_mask, mask=mask)
+
+        # logger.info("!!! wav2vec_out sz %s", wav2vec_out.size())
+        # logger.info("!!! wav2vec_out %s", wav2vec_out)
 
         B, T, C = wav2vec_out.size()
 
@@ -139,27 +136,20 @@ class Wav2Vec2Encoder(nn.Module):
             if s_len > max_len:
                 self.tmp_long_audio_samples += 1
                 if self.tmp_long_audio_samples % 100 == 0:
-                    logger.info(
-                        "tmp_long_audio_samples %s", self.tmp_long_audio_samples
-                    )
+                    logger.info("tmp_long_audio_samples %s", self.tmp_long_audio_samples)
 
                 return seq[0:max_len]
             r = torch.cat(
                 [
                     seq,
-                    torch.Tensor()
-                    .new_full((max_len - s_len,), 0, dtype=torch.float)
-                    .to(flat_encoded_out.device),
+                    torch.Tensor().new_full((max_len - s_len,), 0, dtype=torch.float).to(flat_encoded_out.device),
                 ],
                 dim=0,
             )
             return r
 
         flat_encoded_out = torch.cat(
-            [
-                pad_to_len(flat_encoded_out[i], self.max_audio_t).view(1, -1)
-                for i in range(B)
-            ],
+            [pad_to_len(flat_encoded_out[i], self.max_audio_t).view(1, -1) for i in range(B)],
             dim=0,
         )
 
@@ -170,6 +160,9 @@ class Wav2Vec2Encoder(nn.Module):
 
         if self.training:
             pooled_output = self.dropout(pooled_output)
+
+        # logger.info("!!! wav2vec_out pooled sz %s", pooled_output.size())
+        # logger.info("!!! wav2vec_out pooled  %s", pooled_output)
 
         return None, pooled_output, None
 

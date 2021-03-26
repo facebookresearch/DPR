@@ -3,6 +3,7 @@
 
 # model type. One of [hf_bert, pytext_bert, fairseq_roberta]
 encoder_model_type: mixed_hf_bert_wav2vec
+#hf_bert
 
 # HuggingFace's config name for model initialization
 pretrained_model_cfg: bert-base-uncased
@@ -24,12 +25,24 @@ fix_ctx_encoder: False
 # if False, the model won't load pre-trained BERT weights
 pretrained: True
 
-#wav2vec_cp_file: /checkpoint/vladk/speechqa/wav2vec_small_960h.pt
-# non finetuned
+# HF params
+pretrained_wav2vec_model_cfg:
+#facebook/wav2vec2-base-960h
+
+wav2_vec_extra_proj_dim: 768 # TODO: make a common param
+wav2vec_dropout: 0.1
+
+# fairseq params
 wav2vec_cp_file: /checkpoint/vladk/speechqa/wav2vec_small.pt
+# non finetuned
+#wav2vec_cp_file: /checkpoint/vladk/speechqa/wav2vec_small.pt
 
-wav2vec_apply_mask: False
+wav2vec_apply_mask: True
 
-max_audio_t: 300
 
-use_tanh: False
+# wav2vec common params
+wav2vec_max_audio_t: 300
+wav2vec_use_activation: False
+
+#TODO: move to train cfg group
+audio_encoder_lr_factor: 0

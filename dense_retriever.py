@@ -62,30 +62,26 @@ def generate_question_vectors(
                 # TODO: tmp workaround for EL, remove or revise
                 if query_token == "[START_ENT]":
                     batch_tensors = [
-                        _select_span_with_token(q, tensorizer, token_str=query_token)
-                        for q in batch_questions
+                        _select_span_with_token(q, tensorizer, token_str=query_token) for q in batch_questions
                     ]
                 else:
-                    batch_tensors = [
-                        tensorizer.text_to_tensor(" ".join([query_token, q]))
-                        for q in batch_questions
-                    ]
+                    batch_tensors = [tensorizer.text_to_tensor(" ".join([query_token, q])) for q in batch_questions]
             elif isinstance(batch_questions[0], T):
                 batch_tensors = [q for q in batch_questions]
             else:
                 batch_tensors = [tensorizer.text_to_tensor(q) for q in batch_questions]
 
+            # TODO: this only works for Wav2vec pipeline
+            # """ ---------------------------------
             max_vector_len = max(q_t.size(1) for q_t in batch_tensors)
             min_vector_len = min(q_t.size(1) for q_t in batch_tensors)
 
-            # TODO: this only works for Wav2vec pipeline
             if max_vector_len != min_vector_len:
                 # TODO: _pad_to_len move to utils
                 from dpr.models.reader import _pad_to_len
 
-                batch_tensors = [
-                    _pad_to_len(q.squeeze(0), 0, max_vector_len) for q in batch_tensors
-                ]
+                batch_tensors = [_pad_to_len(q.squeeze(0), 0, max_vector_len) for q in batch_tensors]
+            # """ ---------------------------------
 
             q_ids_batch = torch.stack(batch_tensors, dim=0).cuda()
             q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
@@ -116,17 +112,13 @@ def generate_question_vectors(
 
 
 class DenseRetriever(object):
-    def __init__(
-        self, question_encoder: nn.Module, batch_size: int, tensorizer: Tensorizer
-    ):
+    def __init__(self, question_encoder: nn.Module, batch_size: int, tensorizer: Tensorizer):
         self.question_encoder = question_encoder
         self.batch_size = batch_size
         self.tensorizer = tensorizer
         self.selector = None
 
-    def generate_question_vectors(
-        self, questions: List[str], query_token: str = None
-    ) -> T:
+    def generate_question_vectors(self, questions: List[str], query_token: str = None) -> T:
 
         bsz = self.batch_size
         self.question_encoder.eval()
@@ -168,9 +160,7 @@ class LocalFaissRetriever(DenseRetriever):
         :return:
         """
         buffer = []
-        for i, item in enumerate(
-            iterate_encoded_files(vector_files, path_id_prefixes=path_id_prefixes)
-        ):
+        for i, item in enumerate(iterate_encoded_files(vector_files, path_id_prefixes=path_id_prefixes)):
             buffer.append(item)
             if 0 < buffer_size == len(buffer):
                 self.index.index_data(buffer)
@@ -178,9 +168,7 @@ class LocalFaissRetriever(DenseRetriever):
         self.index.index_data(buffer)
         logger.info("Data indexing completed.")
 
-    def get_top_docs(
-        self, query_vectors: np.array, top_docs: int = 100
-    ) -> List[Tuple[List[object], List[float]]]:
+    def get_top_docs(self, query_vectors: np.array, top_docs: int = 100) -> List[Tuple[List[object], List[float]]]:
         """
         Does the retrieval of the best matching passages given the query vectors batch
         :param query_vectors:
@@ -201,9 +189,7 @@ def validate(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
-    match_stats = calculate_matches(
-        passages, answers, result_ctx_ids, workers_num, match_type
-    )
+    match_stats = calculate_matches(passages, answers, result_ctx_ids, workers_num, match_type)
     top_k_hits = match_stats.top_k_hits
 
     logger.info("Validation results: top k documents hits %s", top_k_hits)
@@ -253,9 +239,7 @@ def save_results(
     logger.info("Saved results * scores  to %s", out_file)
 
 
-def iterate_encoded_files(
-    vector_files: list, path_id_prefixes: List = None
-) -> Iterator[Tuple]:
+def iterate_encoded_files(vector_files: list, path_id_prefixes: List = None) -> Iterator[Tuple]:
     for i, file in enumerate(vector_files):
         logger.info("Reading file %s", file)
         id_prefix = None
@@ -277,9 +261,7 @@ def validate_tables(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
-    match_stats = calculate_chunked_matches(
-        passages, answers, result_ctx_ids, workers_num, match_type
-    )
+    match_stats = calculate_chunked_matches(passages, answers, result_ctx_ids, workers_num, match_type)
     top_k_chunk_hits = match_stats.top_k_chunk_hits
     top_k_table_hits = match_stats.top_k_table_hits
 
@@ -303,9 +285,7 @@ def main(cfg: DictConfig):
     saved_state = load_states_from_checkpoint(cfg.model_file)
     set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
-    tensorizer, encoder, _ = init_biencoder_components(
-        cfg.encoder.encoder_model_type, cfg, inference_only=True
-    )
+    tensorizer, encoder, _ = init_biencoder_components(cfg.encoder.encoder_model_type, cfg, inference_only=True)
 
     logger.info("Loading saved model state ...")
     encoder.load_state(saved_state, strict=False)
@@ -317,9 +297,7 @@ def main(cfg: DictConfig):
         logger.info("Selecting standard question encoder")
         encoder = encoder.question_model
 
-    encoder, _ = setup_for_distributed_mode(
-        encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16
-    )
+    encoder, _ = setup_for_distributed_mode(encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16)
     encoder.eval()
     model_to_load = get_model_obj(encoder)
     vector_size = model_to_load.get_out_size()
@@ -359,9 +337,7 @@ def main(cfg: DictConfig):
     retriever = LocalFaissRetriever(encoder, cfg.batch_size, tensorizer, index)
 
     logger.info("Using special token %s", qa_src.special_query_token)
-    questions_tensor = retriever.generate_question_vectors(
-        questions, query_token=qa_src.special_query_token
-    )
+    questions_tensor = retriever.generate_question_vectors(questions, query_token=qa_src.special_query_token)
 
     if qa_src.selector:
         logger.info("Using custom representation token selector")
@@ -382,13 +358,11 @@ def main(cfg: DictConfig):
 
     logger.info("ctx_files_patterns: %s", ctx_files_patterns)
     if ctx_files_patterns:
-        assert len(ctx_files_patterns) == len(
-            id_prefixes
-        ), "ctx len={} pref leb={}".format(len(ctx_files_patterns), len(id_prefixes))
+        assert len(ctx_files_patterns) == len(id_prefixes), "ctx len={} pref leb={}".format(
+            len(ctx_files_patterns), len(id_prefixes)
+        )
     else:
-        assert (
-            index_path
-        ), "Either encoded_ctx_files or index_path parameter should be set."
+        assert index_path, "Either encoded_ctx_files or index_path parameter should be set."
 
     input_paths = []
     path_id_prefixes = []
@@ -405,9 +379,7 @@ def main(cfg: DictConfig):
         retriever.index.deserialize(index_path)
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
-        retriever.index_encoded_data(
-            input_paths, index_buffer_sz, path_id_prefixes=path_id_prefixes
-        )
+        retriever.index_encoded_data(input_paths, index_buffer_sz, path_id_prefixes=path_id_prefixes)
         if index_path:
             retriever.index.serialize(index_path)
 
@@ -422,9 +394,7 @@ def main(cfg: DictConfig):
         ctx_src.load_data_to(all_passages)
 
     if len(all_passages) == 0:
-        raise RuntimeError(
-            "No passages data found. Please specify ctx_file param properly."
-        )
+        raise RuntimeError("No passages data found. Please specify ctx_file param properly.")
 
     if cfg.validate_as_tables:
         questions_doc_hits = validate_tables(
@@ -454,9 +424,7 @@ def main(cfg: DictConfig):
         )
 
     if cfg.kilt_out_file:
-        kilt_ctx = next(
-            iter([ctx for ctx in ctx_sources if isinstance(ctx, KiltCsvCtxSrc)]), None
-        )
+        kilt_ctx = next(iter([ctx for ctx in ctx_sources if isinstance(ctx, KiltCsvCtxSrc)]), None)
         if not kilt_ctx:
             raise RuntimeError("No Kilt compatible context file provided")
         assert hasattr(cfg, "kilt_out_file")

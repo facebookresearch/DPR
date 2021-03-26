@@ -15,7 +15,8 @@ nq_dev:
 
 trivia_test:
   _target_: dpr.data.retriever_data.CsvQASrc
-  file: data.retriever.qas.trivia-test
+  #file: data.retriever.qas.trivia-test
+  file: /private/home/scottyih/playground/bert-qa/data/triviaqa-test.qa.csv
 
 trivia_train:
   _target_: dpr.data.retriever_data.CsvQASrc
@@ -30,6 +31,8 @@ nq_audio_test:
   #file: data.retriever.qas.nq-test
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
   wav_tsv_file: /checkpoint/vladk/speechqa/data/test/test.tsv
+  #normalize_audio: True
+  normalize_audio: False
 
 nq_tts_asr_test:
   _target_: dpr.data.retriever_data.TTS_ASR_QASrc
