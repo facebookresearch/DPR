@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 import torch
-from typing import List
+from typing import List, Tuple
 from torch import Tensor as T
 from torch import nn
 
@@ -20,82 +20,104 @@ from dpr.models.hf_models import (
     get_wav2vec_encoder,
 )
 
-from dpr.models.fairseq_models import Wav2Vec2Encoder, HubertEncoder
+from dpr.models.fairseq_models import (
+    Wav2Vec2Encoder,
+    HubertEncoder,
+    get_roberta_encoder_components,
+    get_fairseq_adamw_optimizer,
+)
 from dpr.utils.data_utils import Tensorizer
 
 logger = logging.getLogger(__name__)
 
 
 def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kwargs):
-    dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
     logger.info("Initializing Mixed Encoder")
 
-    if cfg.encoder.pretrained_wav2vec_model_cfg:
-        question_encoder = get_wav2vec_encoder(
-            cfg.encoder.pretrained_wav2vec_model_cfg,
-            cfg.encoder.wav2vec_max_audio_t,
-            cfg.encoder.wav2_vec_extra_proj_dim,
-            cfg.encoder.wav2vec_dropout,
-            cfg.encoder.wav2vec_use_activation,
-        )
-
-    elif cfg.encoder.wav2vec_cp_file:  # fairseq model
-
-        if cfg.encoder.encoder_model_type == "mixed_hf_bert_wav2vec":
-            audio_cls = Wav2Vec2Encoder
-        elif cfg.encoder.encoder_model_type == "mixed_hf_bert_hubert":
-            audio_cls = HubertEncoder
-        else:
-            raise ValueError(f"{cfg.encoder.encoder_model_type} is not supported.")
-
-        question_encoder = audio_cls(
-            cfg.encoder.wav2vec_cp_file,
-            cfg.encoder.wav2vec_apply_mask,
-            cfg.encoder.wav2vec_max_audio_t,
-            use_tanh=cfg.encoder.wav2vec_use_activation,
-            dropout=cfg.encoder.wav2vec_dropout,
-        )
-    else:
-        raise RuntimeError("Either pretrained_wav2vec_model_cfg or wav2vec_cp_file should be defined")
-
-    ctx_encoder = HFBertEncoder.init_encoder(
-        cfg.encoder.pretrained_model_cfg,
-        projection_dim=cfg.encoder.projection_dim,
-        dropout=dropout,
-        pretrained=cfg.encoder.pretrained,
-        **kwargs,
-    )
+    question_encoder = get_query_encoder(cfg)
+    ctx_encoder, tensorizer = get_ctx_encoder(cfg)
 
     fix_ctx_encoder = cfg.fix_ctx_encoder if hasattr(cfg, "fix_ctx_encoder") else False
 
     biencoder = MixedBiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
-    tensorizer = get_bert_tensorizer(cfg)
 
     if not hasattr(cfg, "train"):
         return tensorizer, biencoder, None
 
+    # init optimizer
     lr = cfg.train.learning_rate
-    if cfg.encoder.audio_encoder_lr_factor != 0:
-        groups = get_hf_model_param_grouping(biencoder.ctx_model, weight_decay=cfg.train.weight_decay)
-        q_groups = get_hf_model_param_grouping(biencoder.question_model, weight_decay=cfg.train.weight_decay)
-        for g in q_groups:
-            g["lr"] = lr * cfg.encoder.audio_encoder_lr_factor
-            logger.info("Setting lr=%s for wav2vec encoder param group", g["lr"])
-            groups.append(g)
+    if cfg.encoder.optimizer == "hf-adam":
+        if cfg.encoder.q_audio_encoder_lr_factor != 0:
+            groups = get_hf_model_param_grouping(biencoder.ctx_model, weight_decay=cfg.train.weight_decay)
+            q_groups = get_hf_model_param_grouping(biencoder.question_model, weight_decay=cfg.train.weight_decay)
+            for g in q_groups:
+                g["lr"] = lr * cfg.encoder.audio_encoder_lr_factor
+                logger.info("Setting lr=%s for wav2vec encoder param group", g["lr"])
+                groups.append(g)
+        else:
+            groups = get_hf_model_param_grouping(biencoder, weight_decay=cfg.train.weight_decay)
         optimizer = get_optimizer_grouped(groups, learning_rate=lr, adam_eps=cfg.train.adam_eps)
     else:
-        optimizer = (
-            get_optimizer(
-                biencoder,
-                learning_rate=lr,
-                adam_eps=cfg.train.adam_eps,
-                weight_decay=cfg.train.weight_decay,
-            )
-            if not inference_only
-            else None
-        )
+        optimizer = get_fairseq_adamw_optimizer(biencoder, cfg)
 
     return tensorizer, biencoder, optimizer
+
+
+def get_query_encoder(cfg):
+    # TODO: unify initialization
+    if cfg.encoder.q_encoder_type == "hf-wav2vec":  # HF-based
+        query_encoder = get_wav2vec_encoder(
+            cfg.encoder.q_wav2vec_model_cfg,
+            cfg.encoder.q_max_audio_t,
+            cfg.encoder.q_projection_dim,
+            cfg.encoder.q_dropout,
+            cfg.encoder.q_use_activation,
+        )
+
+    elif cfg.encoder.q_wav2vec_cp_file:  # Fairseq based
+
+        if cfg.encoder.q_encoder_type == "fairseq-wav2vec":
+            audio_cls = Wav2Vec2Encoder
+        elif cfg.encoder.q_encoder_type == "fairseq-hubert":
+            audio_cls = HubertEncoder
+        else:
+            raise ValueError(f"{cfg.encoder.q_encoder_type} is not supported.")
+
+        query_encoder = audio_cls(
+            cfg.encoder.q_wav2vec_cp_file,
+            cfg.encoder.q_wav2vec_apply_mask,
+            cfg.encoder.q_max_audio_t,
+            use_tanh=cfg.encoder.q_use_activation,
+            dropout=cfg.encoder.q_dropout,
+            output_layer=cfg.encoder.q_output_layer,
+        )
+    else:
+        raise RuntimeError("Either q_wav2vec_model_cfg or q_wav2vec_cp_file should be defined")
+    return query_encoder
+
+
+def get_ctx_encoder(cfg) -> Tuple[object, Tensorizer]:
+    # TODO: unify initialization
+    if cfg.encoder.ctx_encoder_type == "hf-bert":  # HF-based
+
+        ctx_encoder = HFBertEncoder.init_encoder(
+            cfg.encoder.ctx_model_cfg,
+            projection_dim=cfg.encoder.ctx_projection_dim,
+            dropout=cfg.encoder.ctx_dropout,
+            pretrained=cfg.encoder.ctx_pretrained,
+        )
+        tensorizer = get_bert_tensorizer(cfg)
+    elif cfg.encoder.ctx_encoder_type == "fairseq-roberta":  # Fairseq based
+        ctx_encoder, tensorizer = get_roberta_encoder_components(
+            cfg.encoder.ctx_pretrained_file,
+            cfg.encoder.ctx_model_cfg,
+            cfg.do_lower_case,
+            cfg.encoder.ctx_sequence_length,
+        )
+
+    else:
+        raise RuntimeError("Either q_wav2vec_model_cfg or q_wav2vec_cp_file should be defined")
+    return ctx_encoder, tensorizer
 
 
 # TODO reduce code copy-paste

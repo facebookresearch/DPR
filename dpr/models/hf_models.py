@@ -134,10 +134,9 @@ def _add_special_tokens(tokenizer, special_tokens):
     logger.info("Tokenizer's all_special_tokens %s", tokenizer.all_special_tokens)
 
 
-def get_roberta_tensorizer(args, tokenizer=None):
-    if not tokenizer:
-        tokenizer = get_roberta_tokenizer(args.pretrained_model_cfg, do_lower_case=args.do_lower_case)
-    return RobertaTensorizer(tokenizer, args.sequence_length)
+def get_roberta_tensorizer(pretrained_model_cfg: str, do_lower_case: bool, sequence_length: int):
+    tokenizer = get_roberta_tokenizer(pretrained_model_cfg, do_lower_case=do_lower_case)
+    return RobertaTensorizer(tokenizer, sequence_length)
 
 
 def get_optimizer(

@@ -57,7 +57,7 @@ def init_hf_roberta_tenzorizer(args, **kwargs):
         raise RuntimeError("Please install transformers lib")
     from .hf_models import get_roberta_tensorizer
 
-    return get_roberta_tensorizer(args)
+    return get_roberta_tensorizer(args.encoder.pretrained_model_cfg, args.do_lower_case, args.encoder.sequence_length)
 
 
 def init_audio_mixed_biencoder_components(args, **kwargs):
@@ -74,8 +74,7 @@ BIENCODER_INITIALIZERS = {
     "hf_bert": init_hf_bert_biencoder,
     "pytext_bert": init_pytext_bert_biencoder,
     "fairseq_roberta": init_fairseq_roberta_biencoder,
-    "mixed_hf_bert_wav2vec": init_audio_mixed_biencoder_components,
-    "mixed_hf_bert_hubert": init_audio_mixed_biencoder_components,
+    "mixed_audio": init_audio_mixed_biencoder_components,
 }
 
 READER_INITIALIZERS = {

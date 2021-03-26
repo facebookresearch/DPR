@@ -8,7 +8,7 @@
 """
 Encoder model wrappers based on Fairseq code
 """
-
+import collections
 import logging
 from typing import Tuple
 
@@ -20,26 +20,29 @@ from torch import nn
 
 import fairseq
 from dpr.models.hf_models import get_roberta_tensorizer
+from dpr.utils.data_utils import Tensorizer
 from fairseq.optim.adam import FairseqAdam
 from .biencoder import BiEncoder
 
 logger = logging.getLogger(__name__)
 
+FairseqOptCfg = collections.namedtuple("FairseqOptCfg", ["lr", "adam_betas", "adam_eps", "weight_decay"])
+
 
 def get_roberta_biencoder_components(args, inference_only: bool = False, **kwargs):
-    question_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
-    ctx_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
+    question_encoder = RobertaEncoder.from_pretrained(args.encoder.pretrained_file)
+    ctx_encoder = RobertaEncoder.from_pretrained(args.encoder.pretrained_file)
     biencoder = BiEncoder(question_encoder, ctx_encoder)
     optimizer = get_fairseq_adamw_optimizer(biencoder, args) if not inference_only else None
-
-    tensorizer = get_roberta_tensorizer(args)
-
+    tensorizer = get_roberta_tensorizer(
+        args.encoder.pretrained_model_cfg, args.do_lower_case, args.encoder.sequence_length
+    )
     return tensorizer, biencoder, optimizer
 
 
 def get_fairseq_adamw_optimizer(model: nn.Module, args):
-    setattr(args, "lr", [args.learning_rate])
-    return FairseqAdam(args, model.parameters()).optimizer
+    cfg = FairseqOptCfg(args.train.learning_rate, args.train.adam_betas, args.train.adam_eps, args.train.weight_decay)
+    return FairseqAdam(cfg, model.parameters()).optimizer
 
 
 class RobertaEncoder(nn.Module):
@@ -52,9 +55,15 @@ class RobertaEncoder(nn.Module):
         model = FaiseqRobertaModel.from_pretrained(pretrained_dir_path)
         return cls(model)
 
-    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T) -> Tuple[T, ...]:
+    def forward(
+        self,
+        input_ids: T,
+        token_type_ids: T,
+        attention_mask: T,
+        representation_token_pos=0,
+    ) -> Tuple[T, ...]:
         roberta_out = self.fairseq_roberta.extract_features(input_ids)
-        cls_out = roberta_out[:, 0, :]
+        cls_out = roberta_out[:, representation_token_pos, :]
         return roberta_out, cls_out, None
 
     def get_out_size(self):
@@ -69,6 +78,7 @@ class Wav2Vec2Encoder(nn.Module):
         max_audio_t: int,
         use_tanh: bool = True,
         dropout: float = 0.0,
+        output_layer: str = None,
     ):
         super(Wav2Vec2Encoder, self).__init__()
         state = fairseq.checkpoint_utils.load_checkpoint_to_cpu(cp_file)
@@ -99,13 +109,12 @@ class Wav2Vec2Encoder(nn.Module):
 
         self.apply_mask = apply_mask
         self.use_tanh = use_tanh
+        self.output_layer = output_layer
 
         # TODO: remove after debug
         self.tmp_long_audio_samples = 0
 
-    def forward(
-        self, input_ids: T, _token_type_ids: T, attention_mask: T, representation_token_pos=0, output_layer=None
-    ) -> Tuple[T, ...]:
+    def forward(self, input_ids: T, _token_type_ids: T, attention_mask: T, representation_token_pos=0) -> Tuple[T, ...]:
         mask = self.apply_mask and self.training
 
         # TODO: remove after debug
@@ -174,6 +183,7 @@ class HubertEncoder(nn.Module):
         max_audio_t: int,
         use_tanh: bool = True,
         dropout: float = 0.0,
+        output_layer: str = None,
     ):
         super(HubertEncoder, self).__init__()
         models, cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task([cp_file])
@@ -196,20 +206,19 @@ class HubertEncoder(nn.Module):
 
         self.apply_mask = apply_mask
         self.use_tanh = use_tanh
+        self.output_layer = output_layer
 
         # TODO: remove after debug
         self.tmp_long_audio_samples = 0
 
-    def forward(
-        self, input_ids: T, _token_type_ids: T, padding_mask: T, representation_token_pos=0, output_layer=None
-    ) -> Tuple[T, ...]:
+    def forward(self, input_ids: T, _token_type_ids: T, padding_mask: T, representation_token_pos=0) -> Tuple[T, ...]:
         mask = self.apply_mask and self.training
 
         # TODO: remove after debug
         torch.cuda.ipc_collect()
 
         features, padding_mask = self.model.extract_features(
-            input_ids, padding_mask=padding_mask, mask=mask, output_layer=output_layer
+            input_ids, padding_mask=padding_mask, mask=mask, output_layer=self.output_layer
         )
 
         bsz, seq_len, feature_dim = features.size()
@@ -258,3 +267,11 @@ class HubertEncoder(nn.Module):
 
     def get_out_size(self):
         return self.hidden_size
+
+
+def get_roberta_encoder_components(
+    pretrained_file: str, pretrained_model_cfg: str, do_lower_case: bool, sequence_length: int
+) -> Tuple[RobertaEncoder, Tensorizer]:
+    encoder = RobertaEncoder.from_pretrained(pretrained_file)
+    tensorizer = get_roberta_tensorizer(pretrained_model_cfg, do_lower_case, sequence_length)
+    return encoder, tensorizer

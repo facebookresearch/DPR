@@ -1,54 +1,45 @@
-
 # @package _group_
 
-# model type. One of [mixed_hf_bert_wav2vec, mixed_hf_bert_hubert]
-# CHANGE THIS TO for a different encoder!
-encoder_model_type: mixed_hf_bert_wav2vec
-# encoder_model_type: mixed_hf_bert_hubert
+encoder_model_type: mixed_audio
 
-# HuggingFace's config name for model initialization
-pretrained_model_cfg: bert-base-uncased
 
-# Some encoders need to be initialized from a file
-pretrained_file:
+# ------------ QUERY ENCODER ------------
+q_encoder_type: # hf-wav2vec fairseq-wav2vec or fairseq-hubert
 
-# Which layer representation to use
-output_layer:
 
-# Extra linear layer on top of standard bert/roberta encoder
-projection_dim: 0
+# HF only params
+q_wav2vec_model_cfg: #facebook/wav2vec2-base-960h
 
-# Max length of the encoder input sequence
-sequence_length: 256
+# fairseq only params
+q_wav2vec_cp_file: #/checkpoint/vladk/speechqa/wav2vec_small_960h.pt
+q_wav2vec_apply_mask: True
+q_output_layer: # Which layer representation to use
 
-dropout: 0.1
+q_projection_dim: 768  # Extra linear layer on top of pre-trained encoder
+q_dropout: 0.1
+q_use_activation: False
+q_max_audio_t: 300
+q_audio_encoder_lr_factor: 0
+
+# ------------ CTX ENCODER ------------
+ctx_encoder_type: # hf-bert or fairseq-roberta
+
+# fairseq only params
+ctx_pretrained_file:  # /private/home/vladk/data/fairseq_checkpoints/roberta.base/
+
+ctx_model_cfg: bert-base-uncased # roberta-base
+ctx_projection_dim: 0  # Extra linear layer on top of pre-trained encoder
+ctx_sequence_length: 256 # Max length of the encoder input sequence
+ctx_dropout: 0.1
+ctx_pretrained: True  # if False, the model won't load pre-trained BERT weights
+
+
+# -------------- COMMON -------------------
 
 # whether to fix (don't update) context encoder during training or not
 fix_ctx_encoder: False
 
-# if False, the model won't load pre-trained BERT weights
-pretrained: True
+#TODO: move to train config group?
+optimizer: hf-adam  # fairseq-adam
 
 
-# HF params
-pretrained_wav2vec_model_cfg:
-#facebook/wav2vec2-base-960h
-
-wav2_vec_extra_proj_dim: 768 # TODO: make a common param
-wav2vec_dropout: 0.1
-
-# fairseq params
-# CHANGE THIS TO for a different encoder!
-wav2vec_cp_file: /checkpoint/vladk/speechqa/wav2vec_small.pt
-# non finetuned
-# wav2vec_cp_file: /checkpoint/vladk/speechqa/wav2vec_small.pt
-
-wav2vec_apply_mask: True
-
-
-# wav2vec common params
-wav2vec_max_audio_t: 300
-wav2vec_use_activation: False
-
-#TODO: move to train cfg group
-audio_encoder_lr_factor: 0
