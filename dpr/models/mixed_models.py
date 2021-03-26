@@ -18,23 +18,18 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
     dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
 
     if cfg.encoder.encoder_model_type == "mixed_hf_bert_wav2vec":
-        question_encoder = Wav2Vec2Encoder(
-            cfg.encoder.wav2vec_cp_file,
-            cfg.encoder.wav2vec_apply_mask,
-            cfg.encoder.max_audio_t,
-            use_tanh=cfg.encoder.use_tanh,
-            dropout=cfg.encoder.dropout,
-        )
+        audio_cls = Wav2Vec2Encoder
     elif cfg.encoder.encoder_model_type == "mixed_hf_bert_hubert":
-        question_encoder = HubertEncoder(
-            cfg.encoder.cp_file,
-            cfg.encoder.apply_mask,
-            cfg.encoder.max_audio_t,
-            use_tanh=cfg.encoder.use_tanh,
-            dropout=cfg.encoder.dropout,
-        )
+        audio_cls = HubertEncoder
     else:
         raise ValueError(f"{cfg.encoder.encoder_model_type} is not supported.")
+    question_encoder = audio_cls(
+        cfg.encoder.cp_file,
+        cfg.encoder.apply_mask,
+        cfg.encoder.max_audio_t,
+        use_tanh=cfg.encoder.use_tanh,
+        dropout=cfg.encoder.dropout,
+    )
 
     ctx_encoder = HFBertEncoder.init_encoder(
         cfg.encoder.pretrained_model_cfg,

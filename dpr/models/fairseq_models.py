@@ -206,6 +206,7 @@ class HubertEncoder(nn.Module):
         self.activation = nn.Tanh()
         self.dropout = nn.Dropout(dropout)
 
+        self.apply_mask = apply_mask
         self.use_tanh = use_tanh
 
         # TODO: remove after debug
@@ -231,7 +232,7 @@ class HubertEncoder(nn.Module):
         bsz, seq_len, feature_dim = features.size()
         assert self.hidden_size == feature_dim
 
-        flat_encoded_out = features.reshape(B, -1)
+        flat_encoded_out = features.reshape(bsz, -1)
         if seq_len > self.max_audio_t:
             logger.warning("Audio length exceeds > max_audio_t: %d>%d", T, self.max_audio_t)
 
@@ -264,7 +265,7 @@ class HubertEncoder(nn.Module):
         flat_encoded_out = torch.cat(
             [
                 pad_to_len(flat_encoded_out[i], self.max_audio_t).view(1, -1)
-                for i in range(B)
+                for i in range(bsz)
             ],
             dim=0,
         )

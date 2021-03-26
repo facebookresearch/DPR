@@ -39,6 +39,7 @@ setup(
         "hydra-core>=1.0.0",
         "omegaconf>=2.0.1",
         "jsonlines",
-        "soundfile"
+        "soundfile",
+        "editdistance"
     ],
 )
