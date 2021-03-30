@@ -101,14 +101,24 @@ def get_bert_reader_components(cfg, inference_only: bool = False, **kwargs):
     return tensorizer, reader, optimizer
 
 
-def get_bert_tensorizer(cfg, tokenizer=None):
+# TODO: unify tensorizer init methods
+def get_bert_tensorizer(cfg):
     sequence_length = cfg.encoder.sequence_length
     pretrained_model_cfg = cfg.encoder.pretrained_model_cfg
 
-    if not tokenizer:
-        tokenizer = get_bert_tokenizer(pretrained_model_cfg, do_lower_case=cfg.do_lower_case)
-        if cfg.special_tokens:
-            _add_special_tokens(tokenizer, cfg.special_tokens)
+    tokenizer = get_bert_tokenizer(pretrained_model_cfg, do_lower_case=cfg.do_lower_case)
+    if cfg.special_tokens:
+        _add_special_tokens(tokenizer, cfg.special_tokens)
+
+    return BertTensorizer(tokenizer, sequence_length)
+
+
+def get_bert_tensorizer_p(
+    pretrained_model_cfg: str, sequence_length: int, do_lower_case: bool = True, special_tokens: List[str] = []
+):
+    tokenizer = get_bert_tokenizer(pretrained_model_cfg, do_lower_case=do_lower_case)
+    if special_tokens:
+        _add_special_tokens(tokenizer, special_tokens)
 
     return BertTensorizer(tokenizer, sequence_length)
 
@@ -187,9 +197,16 @@ def get_roberta_tokenizer(pretrained_cfg_name: str, do_lower_case: bool = True):
 
 
 def get_wav2vec_encoder(
-    pretrained_model: str, max_audio_t: int, extra_proj_d: int, final_drop: float, use_activation: bool
+    pretrained_model: str,
+    max_audio_t: int,
+    extra_proj_d: int,
+    final_drop: float,
+    use_activation: bool,
+    output_layer: int,
 ):
-    encoder = Wav2Vec2HFEncoder.init_encoder(pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation)
+    encoder = Wav2Vec2HFEncoder.init_encoder(
+        pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation, output_layer
+    )
     return encoder
 
 
@@ -270,17 +287,20 @@ class HFBertEncoder(BertModel):
 
 
 class Wav2Vec2HFEncoder(Wav2Vec2Model):
-    def __init__(self, config, max_audio_t: int, project_dim, final_dropout: float, use_activation: bool):
+    def __init__(
+        self, config, max_audio_t: int, project_dim, final_dropout: float, use_activation: bool, output_layer: int = -1
+    ):
         Wav2Vec2Model.__init__(self, config)
         hidden_size = config.hidden_size
 
         self.max_audio = max_audio_t * hidden_size
         logger.info(
-            "Wav2Vec2HFEncoder: max_audio_t %s, project_dim %s, dropout %s, use_activation %s",
+            "Wav2Vec2HFEncoder: max_audio_t %s, project_dim %s, dropout %s, use_activation %s, output_layer %d",
             self.max_audio,
             project_dim,
             final_dropout,
             use_activation,
+            output_layer,
         )
 
         self.dense = nn.Linear(self.max_audio, hidden_size) if project_dim != 0 else None
@@ -291,6 +311,8 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
         self.use_activation = use_activation
         self.init_weights()
 
+        self.output_layer = output_layer
+
     @classmethod
     def init_encoder(
         cls,
@@ -300,6 +322,7 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
         dropout: float,
         use_activation: bool,
         pretrained: bool = True,
+        output_layer: int = -1,
     ) -> Wav2Vec2Model:
         logger.info("Initializing HF Wav2Vec2Model Encoder. cfg_name=%s", cfg_name)
         cfg_name = cfg_name if cfg_name else "facebook/wav2vec2-base-960h"
@@ -316,9 +339,10 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
                 project_dim=projection_dim,
                 final_dropout=dropout,
                 use_activation=use_activation,
+                output_layer=output_layer,
             )
         else:
-            return Wav2Vec2HFEncoder(cfg, max_audio_t, projection_dim, dropout, use_activation)
+            return Wav2Vec2HFEncoder(cfg, max_audio_t, projection_dim, dropout, use_activation, output_layer)
 
     def forward(
         self,
@@ -328,23 +352,18 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
         representation_token_pos=0,
     ) -> Tuple[T, ...]:
 
-        # TODO: remove after debug
-        # torch.cuda.ipc_collect()
-
-        # logger.info("!!! wav2vec input_ids %s", input_ids.size())
-
         wav2vec_out = super().forward(input_ids, output_hidden_states=True)  # attention_mask=attention_mask
-
-        wav2vec_out = wav2vec_out.last_hidden_state
-
-        # logger.info("!!! wav2vec_out sz %s", wav2vec_out.size())
-
+        wav2vec_out = (
+            wav2vec_out.last_hidden_state
+            if self.output_layer in [None, -1]
+            else wav2vec_out.hidden_states[self.output_layer]
+        )
         B, T, C = wav2vec_out.size()
 
         if self.dense:
             flat_encoded_out = wav2vec_out.reshape(B, -1)
-            # if T * C > self.max_audio:
-            #    logger.warning("T>max_audio_t: %d>%d", T, self.max_audio)
+            if flat_encoded_out.size(1) > self.max_audio:
+                logger.warning("TxC>max_audio_t: %d>%d", flat_encoded_out.size(1), self.max_audio)
 
             # TODO: make a util method
             def pad_to_len(
@@ -374,9 +393,13 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
 
             if self.training:
                 wav2vec_out = self.dropout(wav2vec_out)
+        else:
+            wav2vec_out = wav2vec_out[:, representation_token_pos, :]
 
-        # logger.info("!!! wav2vec final out sz %s", wav2vec_out.size())
         return None, wav2vec_out, None
+
+    def get_out_size(self):
+        return self.config.hidden_size
 
 
 class BertTensorizer(Tensorizer):

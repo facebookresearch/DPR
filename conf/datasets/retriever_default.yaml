@@ -38,3 +38,8 @@ nq_tts_asr_test:
   _target_: dpr.data.retriever_data.TTS_ASR_QASrc
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
   trans_file: /checkpoint/vladk/speechqa/data/test/transcriptions/hypo.word-960h_scratch.pt-test.txt
+
+nq_tts_asr_test2:
+    _target_: dpr.data.retriever_data.TTS_ASR_QASrc
+    file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
+    trans_file: /checkpoint/kushall/data/speechqa/transcription_test/hypo.word-wav2vec_small_960h.pt-test.txt

@@ -13,8 +13,8 @@ q_wav2vec_model_cfg: #facebook/wav2vec2-base-960h
 # fairseq only params
 q_wav2vec_cp_file: #/checkpoint/vladk/speechqa/wav2vec_small_960h.pt
 q_wav2vec_apply_mask: True
-q_output_layer: # Which layer representation to use
 
+q_output_layer: # Which layer representation to use, int-index for HF implementation and a string for fairseq
 q_projection_dim: 768  # Extra linear layer on top of pre-trained encoder
 q_dropout: 0.1
 q_use_activation: False

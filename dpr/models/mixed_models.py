@@ -4,8 +4,6 @@ import random
 import numpy as np
 import torch
 from typing import List, Tuple
-from torch import Tensor as T
-from torch import nn
 
 
 from dpr.data.speech_data import BiEncoderMixedSample
@@ -13,11 +11,10 @@ from dpr.models.biencoder import BiEncoder, BiEncoderBatch
 
 from dpr.models.hf_models import (
     HFBertEncoder,
-    get_optimizer,
-    get_bert_tensorizer,
     get_hf_model_param_grouping,
     get_optimizer_grouped,
     get_wav2vec_encoder,
+    get_bert_tensorizer_p,
 )
 
 from dpr.models.fairseq_models import (
@@ -65,16 +62,17 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
 
 def get_query_encoder(cfg):
     # TODO: unify initialization
-    if cfg.encoder.q_encoder_type == "hf-wav2vec":  # HF-based
+    if cfg.encoder.q_encoder_type == "hf-wav2vec" and cfg.encoder.q_wav2vec_model_cfg:  # HF-based
         query_encoder = get_wav2vec_encoder(
             cfg.encoder.q_wav2vec_model_cfg,
             cfg.encoder.q_max_audio_t,
             cfg.encoder.q_projection_dim,
             cfg.encoder.q_dropout,
             cfg.encoder.q_use_activation,
+            cfg.encoder.q_output_layer,
         )
 
-    elif cfg.encoder.q_wav2vec_cp_file:  # Fairseq based
+    elif cfg.encoder.q_wav2vec_cp_file and cfg.encoder.q_wav2vec_cp_file:  # Fairseq based
 
         if cfg.encoder.q_encoder_type == "fairseq-wav2vec":
             audio_cls = Wav2Vec2Encoder
@@ -106,7 +104,9 @@ def get_ctx_encoder(cfg) -> Tuple[object, Tensorizer]:
             dropout=cfg.encoder.ctx_dropout,
             pretrained=cfg.encoder.ctx_pretrained,
         )
-        tensorizer = get_bert_tensorizer(cfg)
+        tensorizer = get_bert_tensorizer_p(
+            cfg.encoder.ctx_model_cfg, cfg.encoder.ctx_sequence_length, cfg.do_lower_case, cfg.special_tokens
+        )
     elif cfg.encoder.ctx_encoder_type == "fairseq-roberta":  # Fairseq based
         ctx_encoder, tensorizer = get_roberta_encoder_components(
             cfg.encoder.ctx_pretrained_file,
@@ -116,7 +116,7 @@ def get_ctx_encoder(cfg) -> Tuple[object, Tensorizer]:
         )
 
     else:
-        raise RuntimeError("Either q_wav2vec_model_cfg or q_wav2vec_cp_file should be defined")
+        raise RuntimeError("encoder.ctx_encoder_type should be defined")
     return ctx_encoder, tensorizer
 
 

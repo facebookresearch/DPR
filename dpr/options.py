@@ -32,12 +32,21 @@ def set_cfg_params_from_state(state: dict, cfg: DictConfig):
     """
     if not state:
         return
+
     cfg.do_lower_case = state["do_lower_case"]
-    cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
-    cfg.encoder.encoder_model_type = state["encoder_model_type"]
-    cfg.encoder.pretrained_file = state["pretrained_file"]
-    cfg.encoder.projection_dim = state["projection_dim"]
-    cfg.encoder.sequence_length = state["sequence_length"]
+
+    if "encoder" in state:
+        saved_encoder_params = state["encoder"]
+        # TODO: try to understand why cfg.encoder = state["encoder"] doesn't work
+        for k, v in saved_encoder_params.items():
+            setattr(cfg.encoder, k, v)
+    else:  # 'old' checkpoints backward compatibility support
+        cfg.do_lower_case = state["do_lower_case"]
+        cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
+        cfg.encoder.encoder_model_type = state["encoder_model_type"]
+        cfg.encoder.pretrained_file = state["pretrained_file"]
+        cfg.encoder.projection_dim = state["projection_dim"]
+        cfg.encoder.sequence_length = state["sequence_length"]
 
 
 def get_encoder_params_state_from_cfg(cfg: DictConfig):
@@ -48,11 +57,7 @@ def get_encoder_params_state_from_cfg(cfg: DictConfig):
     """
     return {
         "do_lower_case": cfg.do_lower_case,
-        "pretrained_model_cfg": cfg.encoder.pretrained_model_cfg,
-        "encoder_model_type": cfg.encoder.encoder_model_type,
-        "pretrained_file": cfg.encoder.pretrained_file,
-        "projection_dim": cfg.encoder.projection_dim,
-        "sequence_length": cfg.encoder.sequence_length,
+        "encoder": cfg.encoder,
     }
 
 
@@ -74,11 +79,7 @@ def setup_cfg_gpu(cfg):
     cfg.distributed_world_size = int(ws) if ws else 1
     logger.info("WORLD_SIZE %s", ws)
     if cfg.local_rank == -1 or cfg.no_cuda:  # single-node multi-gpu (or cpu) mode
-        device = str(
-            torch.device(
-                "cuda" if torch.cuda.is_available() and not cfg.no_cuda else "cpu"
-            )
-        )
+        device = str(torch.device("cuda" if torch.cuda.is_available() and not cfg.no_cuda else "cpu"))
         cfg.n_gpu = torch.cuda.device_count()
     else:  # distributed mode
         torch.cuda.set_device(cfg.local_rank)
@@ -115,9 +116,7 @@ def _infer_slurm_init(cfg):
 
     if node_list is not None:
         try:
-            hostnames = subprocess.check_output(
-                ["scontrol", "show", "hostnames", node_list]
-            )
+            hostnames = subprocess.check_output(["scontrol", "show", "hostnames", node_list])
             distributed_init_method = "tcp://{host}:{port}".format(
                 host=hostnames.split()[0].decode("utf-8"),
                 port=cfg.distributed_port,
@@ -152,9 +151,7 @@ def setup_logger(logger):
     logger.setLevel(logging.INFO)
     if logger.hasHandlers():
         logger.handlers.clear()
-    log_formatter = logging.Formatter(
-        "[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
+    log_formatter = logging.Formatter("[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s")
     console = logging.StreamHandler()
     console.setFormatter(log_formatter)
     logger.addHandler(console)
