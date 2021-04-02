@@ -33,11 +33,11 @@ ctx_sequence_length: 256 # Max length of the encoder input sequence
 ctx_dropout: 0.1
 ctx_pretrained: True  # if False, the model won't load pre-trained BERT weights
 
+# whether to fix (don't update) context encoder during training or not
+fix_ctx_encoder: False
 
 # -------------- COMMON -------------------
 
-# whether to fix (don't update) context encoder during training or not
-fix_ctx_encoder: False
 
 #TODO: move to train config group?
 optimizer: hf-adam  # fairseq-adam

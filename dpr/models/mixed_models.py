@@ -48,7 +48,7 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
             groups = get_hf_model_param_grouping(biencoder.ctx_model, weight_decay=cfg.train.weight_decay)
             q_groups = get_hf_model_param_grouping(biencoder.question_model, weight_decay=cfg.train.weight_decay)
             for g in q_groups:
-                g["lr"] = lr * cfg.encoder.audio_encoder_lr_factor
+                g["lr"] = lr * cfg.encoder.q_audio_encoder_lr_factor
                 logger.info("Setting lr=%s for wav2vec encoder param group", g["lr"])
                 groups.append(g)
         else:

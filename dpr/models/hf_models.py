@@ -28,7 +28,8 @@ else:
     from transformers.optimization import AdamW
     from transformers.tokenization_bert import BertTokenizer
     from transformers.tokenization_roberta import RobertaTokenizer
-    from transformers import Wav2Vec2Model, Wav2Vec2Config  # will fail
+
+    # from transformers import Wav2Vec2Model, Wav2Vec2Config  # will fail
 
 from dpr.models.biencoder import BiEncoder
 from dpr.utils.data_utils import Tensorizer
@@ -205,7 +206,7 @@ def get_wav2vec_encoder(
     output_layer: int,
 ):
     encoder = Wav2Vec2HFEncoder.init_encoder(
-        pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation, output_layer
+        pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation, output_layer=output_layer
     )
     return encoder
 
