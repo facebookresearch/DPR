@@ -3,7 +3,7 @@
 defaults:
   - encoder: hf_bert
   - train: biencoder_default
-  - datasets: dpr_default
+  - datasets: encoder_train_default
 
 train_datasets:
 dev_datasets:
