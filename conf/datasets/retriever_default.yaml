@@ -4,6 +4,7 @@ nq_test:
   _target_: dpr.data.retriever_data.CsvQASrc
   #file: data.retriever.qas.nq-test
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
+  query_special_suffix: '?'
 
 nq_train:
   _target_: dpr.data.retriever_data.CsvQASrc
@@ -28,16 +29,36 @@ trivia_dev:
 
 nq_audio_test:
   _target_: dpr.data.speech_data.WavTextQADataset
-  #file: data.retriever.qas.nq-test
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
   wav_tsv_file: /checkpoint/vladk/speechqa/data/test/test.tsv
-  #normalize_audio: True
+  normalize_audio: False
+
+nq_audio_train:
+  _target_: dpr.data.speech_data.WavTextQADataset
+  file: /private/home/scottyih/playground/bert-qa/data/nq-train.qa.csv
+  wav_tsv_file: /checkpoint/vladk/speechqa/data/train/all_wav/train.tsv
+  normalize_audio: False
+
+nq_audio_dev:
+  _target_: dpr.data.speech_data.WavTextQADataset
+  file: /private/home/scottyih/playground/bert-qa/data/nq-dev.qa.csv
+  wav_tsv_file: /checkpoint/vladk/speechqa/data/dev/all_wav/dev.tsv
   normalize_audio: False
 
 nq_tts_asr_test:
   _target_: dpr.data.retriever_data.TTS_ASR_QASrc
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
   trans_file: /checkpoint/vladk/speechqa/data/test/transcriptions/hypo.word-960h_scratch.pt-test.txt
+
+nq_tts_asr_train:
+  _target_: dpr.data.retriever_data.TTS_ASR_QASrc
+  file: /private/home/scottyih/playground/bert-qa/data/nq-train.qa.csv
+  trans_file: /checkpoint/vladk/speechqa/data/train/transcriptions/hypo.word-960h_scratch.pt-train.txt
+
+nq_tts_asr_dev:
+  _target_: dpr.data.retriever_data.TTS_ASR_QASrc
+  file: /private/home/scottyih/playground/bert-qa/data/nq-dev.qa.csv
+  trans_file: /checkpoint/vladk/speechqa/data/dev/transcriptions/hypo.word-960h_scratch.pt-dev.txt
 
 nq_tts_asr_test2:
     _target_: dpr.data.retriever_data.TTS_ASR_QASrc

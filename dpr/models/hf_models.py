@@ -126,23 +126,34 @@ def get_bert_tensorizer_p(
 
 def _add_special_tokens(tokenizer, special_tokens):
     logger.info("Adding special tokens %s", special_tokens)
+    logger.info("!!! tokenizer=%s", type(tokenizer))
     special_tokens_num = len(special_tokens)
     # TODO: this is a hack-y logic that uses some private tokenizer structure which can be changed in HF code
-    assert special_tokens_num < 50
+    assert special_tokens_num < 101
     unused_ids = [tokenizer.vocab["[unused{}]".format(i)] for i in range(special_tokens_num)]
     logger.info("Utilizing the following unused token ids %s", unused_ids)
 
     for idx, id in enumerate(unused_ids):
-        del tokenizer.vocab["[unused{}]".format(idx)]
-        tokenizer.vocab[special_tokens[idx]] = id
-        tokenizer.ids_to_tokens[id] = special_tokens[idx]
+        old_token = "[unused{}]".format(idx)
+        del tokenizer.vocab[old_token]
+        new_token = special_tokens[idx]
+        tokenizer.vocab[new_token] = id
+        tokenizer.ids_to_tokens[id] = new_token
+        # logging.info("new token %s id=%s", new_token, id)
 
-    tokenizer._additional_special_tokens = list(special_tokens)
-    logger.info(
-        "Added special tokenizer.additional_special_tokens %s",
-        tokenizer.additional_special_tokens,
-    )
-    logger.info("Tokenizer's all_special_tokens %s", tokenizer.all_special_tokens)
+    tokenizer.additional_special_tokens = list(special_tokens)
+    logger.info("additional_special_tokens %s", tokenizer.additional_special_tokens)
+    logger.info("all_special_tokens_extended: %s", tokenizer.all_special_tokens_extended)
+    logger.info("additional_special_tokens_ids: %s", tokenizer.additional_special_tokens_ids)
+    logger.info("all_special_tokens %s", tokenizer.all_special_tokens)
+
+    logger.info("!!! test tokenize %s", tokenizer.tokenize("[CLS] [w2v60] [w2v19] [w2v46][SEP]does"))
+    enc = tokenizer.encode("[CLS] [w2v60] [w2v19] [w2v46] [w2v24][SEP] does")
+    logger.info("!!! test encode %s", enc)
+    logger.info("!!! test decode %s", tokenizer.decode(enc))
+
+    # for st in special_tokens:
+    #    logging.info("Special token=%s id=%s", st, tokenizer.convert_tokens_to_ids([st]))
 
 
 def get_roberta_tensorizer(pretrained_model_cfg: str, do_lower_case: bool, sequence_length: int):

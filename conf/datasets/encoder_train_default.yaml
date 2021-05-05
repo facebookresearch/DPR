@@ -35,12 +35,25 @@ nq_speech_mixed_train:
   _target_: dpr.data.speech_data.WavJsonTextDataset
   json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
   wav_tsv_file: /checkpoint/vladk/speechqa/data/train/train.tsv
-  #normalize_audio: True
   normalize_audio: False
 
 nq_speech_mixed_dev:
   _target_: dpr.data.speech_data.WavJsonTextDataset
   json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
   wav_tsv_file: /checkpoint/vladk/speechqa/data/dev/dev.tsv
-  #normalize_audio: True
   normalize_audio: False
+
+nq_speech_quantized_train:
+  _target_: dpr.data.speech_data.QuantizedJsonTextDataset
+  json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
+  wav_tsv_file: /checkpoint/vladk/speechqa/data/train/train.tsv
+  km_file: /checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/train_deduped_0_1.km
+  max_audio_len: 176
+
+nq_speech_quantized_dev:
+  _target_: dpr.data.speech_data.QuantizedJsonTextDataset
+  json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json
+  wav_tsv_file: /checkpoint/vladk/speechqa/data/dev/dev.tsv
+  km_file: /checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/dev_deduped_0_1.km
+  max_audio_len: 176
+

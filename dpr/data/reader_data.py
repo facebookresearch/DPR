@@ -17,14 +17,14 @@ import math
 import multiprocessing
 import os
 import pickle
-import torch
-
 from functools import partial
 from typing import Tuple, List, Dict, Iterable, Optional
+
+import torch
 from torch import Tensor as T
 from tqdm import tqdm
 
-from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files
+from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files, read_data_from_json_files
 
 logger = logging.getLogger()
 
@@ -35,12 +35,12 @@ class ReaderPassage(object):
     """
 
     def __init__(
-        self,
-        id=None,
-        text: str = None,
-        title: str = None,
-        score=None,
-        has_answer: bool = None,
+            self,
+            id=None,
+            text: str = None,
+            title: str = None,
+            score=None,
+            has_answer: bool = None,
     ):
         self.id = id
         # string passage representations
@@ -72,12 +72,12 @@ class ReaderSample(object):
     """
 
     def __init__(
-        self,
-        question: str,
-        answers: List,
-        positive_passages: List[ReaderPassage] = [],
-        negative_passages: List[ReaderPassage] = [],
-        passages: List[ReaderPassage] = [],
+            self,
+            question: str,
+            answers: List,
+            positive_passages: List[ReaderPassage] = [],
+            negative_passages: List[ReaderPassage] = [],
+            passages: List[ReaderPassage] = [],
     ):
         self.question = question
         self.answers = answers
@@ -96,13 +96,13 @@ class ReaderSample(object):
 
 class ExtractiveReaderDataset(torch.utils.data.Dataset):
     def __init__(
-        self,
-        files: str,
-        is_train: bool,
-        gold_passages_src: str,
-        tensorizer: Tensorizer,
-        run_preprocessing: bool,
-        num_workers: int,
+            self,
+            files: str,
+            is_train: bool,
+            gold_passages_src: str,
+            tensorizer: Tensorizer,
+            run_preprocessing: bool,
+            num_workers: int,
     ):
         self.files = files
         self.data = []
@@ -119,7 +119,7 @@ class ExtractiveReaderDataset(torch.utils.data.Dataset):
         return len(self.data)
 
     def load_data(
-        self,
+            self,
     ):
         data_files = glob.glob(self.files)
         logger.info("Data files: %s", data_files)
@@ -129,8 +129,8 @@ class ExtractiveReaderDataset(torch.utils.data.Dataset):
         self.data = read_serialized_data_from_files(preprocessed_data_files)
 
     def _get_preprocessed_files(
-        self,
-        data_files: List,
+            self,
+            data_files: List,
     ):
 
         serialized_files = [file for file in data_files if file.endswith(".pkl")]
@@ -151,9 +151,7 @@ class ExtractiveReaderDataset(torch.utils.data.Dataset):
             logger.info("Found preprocessed files. %s", serialized_files)
             return serialized_files
 
-        logger.info(
-            "Data are not preprocessed for reader training. Start pre-processing ..."
-        )
+        logger.info("Data are not preprocessed for reader training. Start pre-processing ...")
 
         # start pre-processing and save results
         def _run_preprocessing(tensorizer: Tensorizer):
@@ -209,7 +207,7 @@ ReaderPreprocessingCfg = collections.namedtuple(
 DEFAULT_PREPROCESSING_CFG_TRAIN = ReaderPreprocessingCfg(
     use_tailing_sep=False,
     skip_no_positves=True,
-    include_gold_passage=False,
+    include_gold_passage=True,  # [changed for speech Q&A ]
     gold_page_only_positives=True,
     max_positives=20,
     max_negatives=50,
@@ -221,11 +219,12 @@ DEFAULT_EVAL_PASSAGES = 100
 
 
 def preprocess_retriever_data(
-    samples: List[Dict],
-    gold_info_file: Optional[str],
-    tensorizer: Tensorizer,
-    cfg: ReaderPreprocessingCfg = DEFAULT_PREPROCESSING_CFG_TRAIN,
-    is_train_set: bool = True,
+        samples: List[Dict],
+        gold_info_file: Optional[str],
+        tensorizer: Tensorizer,
+        cfg: ReaderPreprocessingCfg = DEFAULT_PREPROCESSING_CFG_TRAIN,
+        is_train_set: bool = True,
+
 ) -> Iterable[ReaderSample]:
     """
     Converts retriever results into reader training data.
@@ -238,21 +237,21 @@ def preprocess_retriever_data(
     """
     sep_tensor = tensorizer.get_pair_separator_ids()  # separator can be a multi token
 
-    gold_passage_map, canonical_questions = (
-        _get_gold_ctx_dict(gold_info_file) if gold_info_file else ({}, {})
-    )
+    #gold_passage_map, canonical_questions = _get_gold_ctx_dict(gold_info_file) if gold_info_file else ({}, {})
+
+    # TODO: tmp
+    biencoder_train_file = '/checkpoint/vladk/dpr_open_source/biencoder-nq-train.json'
+    biencoder_dev_file ='/checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json'
+
+    gold_passage_map, canonical_questions = _get_gold_ctx_dict2(gold_info_file, biencoder_train_file if is_train_set else biencoder_dev_file)
 
     no_positive_passages = 0
     positives_from_gold = 0
 
     def create_reader_sample_ids(sample: ReaderPassage, question: str):
-        question_and_title = tensorizer.text_to_tensor(
-            sample.title, title=question, add_special_tokens=True
-        )
+        question_and_title = tensorizer.text_to_tensor(sample.title, title=question, add_special_tokens=True)
         if sample.passage_token_ids is None:
-            sample.passage_token_ids = tensorizer.text_to_tensor(
-                sample.passage_text, add_special_tokens=False
-            )
+            sample.passage_token_ids = tensorizer.text_to_tensor(sample.passage_text, add_special_tokens=False)
 
         all_concatenated, shift = _concat_pair(
             question_and_title,
@@ -264,20 +263,20 @@ def preprocess_retriever_data(
         sample.passage_offset = shift
         assert shift > 1
         if sample.has_answer and is_train_set:
-            sample.answers_spans = [
-                (span[0] + shift, span[1] + shift) for span in sample.answers_spans
-            ]
+            sample.answers_spans = [(span[0] + shift, span[1] + shift) for span in sample.answers_spans]
         return sample
 
     for sample in samples:
+        # tmp
         question = sample["question"]
+        question_txt = sample["query_text"] if "query_text" in sample else question
 
-        if question in canonical_questions:
-            question = canonical_questions[question]
+        if question_txt in canonical_questions:
+            question_txt = canonical_questions[question_txt]
 
         positive_passages, negative_passages = _select_reader_passages(
             sample,
-            question,
+            question_txt,
             tensorizer,
             gold_passage_map,
             cfg.gold_page_only_positives,
@@ -289,12 +288,8 @@ def preprocess_retriever_data(
             is_train_set,
         )
         # create concatenated sequence ids for each passage and adjust answer spans
-        positive_passages = [
-            create_reader_sample_ids(s, question) for s in positive_passages
-        ]
-        negative_passages = [
-            create_reader_sample_ids(s, question) for s in negative_passages
-        ]
+        positive_passages = [create_reader_sample_ids(s, question) for s in positive_passages]
+        negative_passages = [create_reader_sample_ids(s, question) for s in negative_passages]
 
         if is_train_set and len(positive_passages) == 0:
             no_positive_passages += 1
@@ -319,12 +314,12 @@ def preprocess_retriever_data(
 
 
 def convert_retriever_results(
-    is_train_set: bool,
-    input_file: str,
-    out_file_prefix: str,
-    gold_passages_file: str,
-    tensorizer: Tensorizer,
-    num_workers: int = 8,
+        is_train_set: bool,
+        input_file: str,
+        out_file_prefix: str,
+        gold_passages_file: str,
+        tensorizer: Tensorizer,
+        num_workers: int = 8,
 ) -> List[str]:
     """
     Converts the file with dense retriever(or any compatible file format) results into the reader input data and
@@ -341,13 +336,11 @@ def convert_retriever_results(
     """
     with open(input_file, "r", encoding="utf-8") as f:
         samples = json.loads("".join(f.readlines()))
-    logger.info(
-        "Loaded %d questions + retrieval results from %s", len(samples), input_file
-    )
+    logger.info("Loaded %d questions + retrieval results from %s", len(samples), input_file)
     workers = multiprocessing.Pool(num_workers)
     ds_size = len(samples)
     step = max(math.ceil(ds_size / num_workers), 1)
-    chunks = [samples[i : i + step] for i in range(0, ds_size, step)]
+    chunks = [samples[i: i + step] for i in range(0, ds_size, step)]
     chunks = [(i, chunks[i]) for i in range(len(chunks))]
 
     logger.info("Split data into %d chunks", len(chunks))
@@ -371,21 +364,21 @@ def convert_retriever_results(
 
 
 def get_best_spans(
-    tensorizer: Tensorizer,
-    start_logits: List,
-    end_logits: List,
-    ctx_ids: List,
-    max_answer_length: int,
-    passage_idx: int,
-    relevance_score: float,
-    top_spans: int = 1,
+        tensorizer: Tensorizer,
+        start_logits: List,
+        end_logits: List,
+        ctx_ids: List,
+        max_answer_length: int,
+        passage_idx: int,
+        relevance_score: float,
+        top_spans: int = 1,
 ) -> List[SpanPrediction]:
     """
     Finds the best answer span for the extractive Q&A model
     """
     scores = []
     for (i, s) in enumerate(start_logits):
-        for (j, e) in enumerate(end_logits[i : i + max_answer_length]):
+        for (j, e) in enumerate(end_logits[i: i + max_answer_length]):
             scores.append(((i, i + j), s + e))
 
     scores = sorted(scores, key=lambda x: x[1], reverse=True)
@@ -399,25 +392,19 @@ def get_best_spans(
         assert length <= max_answer_length
 
         if any(
-            [
-                start_index <= prev_start_index <= prev_end_index <= end_index
-                or prev_start_index <= start_index <= end_index <= prev_end_index
-                for (prev_start_index, prev_end_index) in chosen_span_intervals
-            ]
+                [
+                    start_index <= prev_start_index <= prev_end_index <= end_index
+                    or prev_start_index <= start_index <= end_index <= prev_end_index
+                    for (prev_start_index, prev_end_index) in chosen_span_intervals
+                ]
         ):
             continue
 
         # extend bpe subtokens to full tokens
-        start_index, end_index = _extend_span_to_full_words(
-            tensorizer, ctx_ids, (start_index, end_index)
-        )
+        start_index, end_index = _extend_span_to_full_words(tensorizer, ctx_ids, (start_index, end_index))
 
-        predicted_answer = tensorizer.to_string(ctx_ids[start_index : end_index + 1])
-        best_spans.append(
-            SpanPrediction(
-                predicted_answer, score, relevance_score, passage_idx, ctx_ids
-            )
-        )
+        predicted_answer = tensorizer.to_string(ctx_ids[start_index: end_index + 1])
+        best_spans.append(SpanPrediction(predicted_answer, score, relevance_score, passage_idx, ctx_ids))
         chosen_span_intervals.append((start_index, end_index))
 
         if len(chosen_span_intervals) == top_spans:
@@ -426,24 +413,22 @@ def get_best_spans(
 
 
 def _select_reader_passages(
-    sample: Dict,
-    question: str,
-    tensorizer: Tensorizer,
-    gold_passage_map: Dict[str, ReaderPassage],
-    gold_page_only_positives: bool,
-    max_positives: int,
-    max1_negatives: int,
-    max2_negatives: int,
-    max_retriever_passages: int,
-    include_gold_passage: bool,
-    is_train_set: bool,
+        sample: Dict,
+        question: str,
+        tensorizer: Tensorizer,
+        gold_passage_map: Dict[str, ReaderPassage],
+        gold_page_only_positives: bool,
+        max_positives: int,
+        max1_negatives: int,
+        max2_negatives: int,
+        max_retriever_passages: int,
+        include_gold_passage: bool,
+        is_train_set: bool,
 ) -> Tuple[List[ReaderPassage], List[ReaderPassage]]:
     answers = sample["answers"]
 
     ctxs = [ReaderPassage(**ctx) for ctx in sample["ctxs"]][0:max_retriever_passages]
-    answers_token_ids = [
-        tensorizer.text_to_tensor(a, add_special_tokens=False) for a in answers
-    ]
+    answers_token_ids = [tensorizer.text_to_tensor(a, add_special_tokens=False) for a in answers]
 
     if is_train_set:
         positive_samples = list(filter(lambda ctx: ctx.has_answer, ctxs))
@@ -455,9 +440,7 @@ def _select_reader_passages(
     positive_ctxs_from_gold_page = (
         list(
             filter(
-                lambda ctx: _is_from_gold_wiki_page(
-                    gold_passage_map, ctx.title, question
-                ),
+                lambda ctx: _is_from_gold_wiki_page(gold_passage_map, ctx.title, question),
                 positive_samples,
             )
         )
@@ -468,13 +451,10 @@ def _select_reader_passages(
     def find_answer_spans(ctx: ReaderPassage):
         if ctx.has_answer:
             if ctx.passage_token_ids is None:
-                ctx.passage_token_ids = tensorizer.text_to_tensor(
-                    ctx.passage_text, add_special_tokens=False
-                )
+                ctx.passage_token_ids = tensorizer.text_to_tensor(ctx.passage_text, add_special_tokens=False)
 
             answer_spans = [
-                _find_answer_positions(ctx.passage_token_ids, answers_token_ids[i])
-                for i in range(len(answers))
+                _find_answer_positions(ctx.passage_token_ids, answers_token_ids[i]) for i in range(len(answers))
             ]
 
             # flatten spans list
@@ -486,7 +466,7 @@ def _select_reader_passages(
                 logger.warning(
                     "No answer found in passage id=%s text=%s, answers=%s, question=%s",
                     ctx.id,
-                    ctx.passage_text,
+                    '', # ctx.passage_text
                     answers,
                     question,
                 )
@@ -515,15 +495,17 @@ def _select_reader_passages(
     if include_gold_passage and question in gold_passage_map:
         gold_passage = gold_passage_map[question]
         included_gold_passage = next(
-            iter(ctx for ctx in selected_positive_ctxs if ctx.id == gold_passage.id),
+            iter(ctx for ctx in selected_positive_ctxs if ctx.passage_text == gold_passage.passage_text),
             None,
         )
         if not included_gold_passage:
+            gold_passage.has_answer = True
             gold_passage = find_answer_spans(gold_passage)
             if not gold_passage.has_answer:
-                logger.warning("No answer found in gold passage %s", gold_passage)
+                logger.warning("No answer found in gold passage")
             else:
                 selected_positive_ctxs.append(gold_passage)
+                logger.info('!!! gold passage appended')
 
     max_negatives = (
         min(max(10 * len(selected_positive_ctxs), max1_negatives), max2_negatives)
@@ -539,7 +521,7 @@ def _find_answer_positions(ctx_ids: T, answer: T) -> List[Tuple[int, int]]:
     a_len = answer.size(0)
     answer_occurences = []
     for i in range(0, c_len - a_len + 1):
-        if (answer == ctx_ids[i : i + a_len]).all():
+        if (answer == ctx_ids[i: i + a_len]).all():
             answer_occurences.append((i, i + a_len - 1))
     return answer_occurences
 
@@ -551,9 +533,7 @@ def _concat_pair(t1: T, t2: T, middle_sep: T = None, tailing_sep: T = None):
 
 
 def _get_gold_ctx_dict(file: str) -> Tuple[Dict[str, ReaderPassage], Dict[str, str]]:
-    gold_passage_infos = (
-        {}
-    )  # question|question_tokens -> ReaderPassage (with title and gold ctx)
+    gold_passage_infos = {}  # question|question_tokens -> ReaderPassage (with title and gold ctx)
 
     # original NQ dataset has 2 forms of same question - original, and tokenized.
     # Tokenized form is not fully consisted with the original question if tokenized by some encoder tokenizers
@@ -568,9 +548,7 @@ def _get_gold_ctx_dict(file: str) -> Tuple[Dict[str, ReaderPassage], Dict[str, s
 
     for sample in data:
         question = sample["question"]
-        question_from_tokens = (
-            sample["question_tokens"] if "question_tokens" in sample else question
-        )
+        question_from_tokens = sample["question_tokens"] if "question_tokens" in sample else question
         original_questions[question_from_tokens] = question
         title = sample["title"].lower()
         context = sample["context"]  # Note: This one is cased
@@ -584,27 +562,72 @@ def _get_gold_ctx_dict(file: str) -> Tuple[Dict[str, ReaderPassage], Dict[str, s
                 rp_exist.title,
             )
             logger.info("Duplicate question gold info: new ctx =%s ", context)
-            logger.info(
-                "Duplicate question gold info: old ctx =%s ", rp_exist.passage_text
-            )
+            logger.info("Duplicate question gold info: old ctx =%s ", rp_exist.passage_text)
 
         gold_passage_infos[question] = rp
         gold_passage_infos[question_from_tokens] = rp
     return gold_passage_infos, original_questions
 
 
-def _is_from_gold_wiki_page(
-    gold_passage_map: Dict[str, ReaderPassage], passage_title: str, question: str
-):
+# TODO: tmp SpeechQA
+def _get_gold_ctx_dict2(file: str, biencoder_data_file: str) -> Tuple[Dict[str, ReaderPassage], Dict[str, str]]:
+    gold_passage_infos = {}  # question|question_tokens -> ReaderPassage (with title and gold ctx)
+
+    # original NQ dataset has 2 forms of same question - original, and tokenized.
+    # Tokenized form is not fully consisted with the original question if tokenized by some encoder tokenizers
+    # Specifically, this is the case for the BERT tokenizer.
+    # Depending of which form was used for retriever training and results generation, it may be useful to convert
+    # all questions to the canonical original representation.
+    original_questions = {}  # question from tokens -> original question (NQ only)
+
+    with open(file, "r", encoding="utf-8") as f:
+        logger.info("Reading file %s" % file)
+        data = json.load(f)["data"]
+
+    for sample in data:
+        question = sample["question"]
+        question_from_tokens = sample["question_tokens"] if "question_tokens" in sample else question
+        original_questions[question_from_tokens] = question
+        title = sample["title"].lower()
+        context = sample["context"]  # Note: This one is cased
+        rp = ReaderPassage(sample["example_id"], text=context, title=title)
+        if question in gold_passage_infos:
+            logger.info("Duplicate question %s", question)
+            rp_exist = gold_passage_infos[question]
+            logger.info(
+                "Duplicate question gold info: title new =%s | old title=%s",
+                title,
+                rp_exist.title,
+            )
+            logger.info("Duplicate question gold info: new ctx =%s ", context)
+            logger.info("Duplicate question gold info: old ctx =%s ", rp_exist.passage_text)
+
+        gold_passage_infos[question] = rp
+        gold_passage_infos[question_from_tokens] = rp
+
+    # override gold passages present in biencoder_data_file
+    data = read_data_from_json_files([biencoder_data_file])
+    gold_ctx_replaced = 0
+    for sample in data:
+        q=sample['question']
+        rp = gold_passage_infos[q]
+        pos_ctx = sample['positive_ctxs'][0]
+        rp.passage_text=pos_ctx['text']
+        rp.title = pos_ctx['title']
+        rp.id=pos_ctx['passage_id']
+        gold_ctx_replaced+=1
+    logger.info('!!! gold_ctx_replaced %d', gold_ctx_replaced)
+    return gold_passage_infos, original_questions
+
+
+def _is_from_gold_wiki_page(gold_passage_map: Dict[str, ReaderPassage], passage_title: str, question: str):
     gold_info = gold_passage_map.get(question, None)
     if gold_info:
         return passage_title.lower() == gold_info.title.lower()
     return False
 
 
-def _extend_span_to_full_words(
-    tensorizer: Tensorizer, tokens: List[int], span: Tuple[int, int]
-) -> Tuple[int, int]:
+def _extend_span_to_full_words(tensorizer: Tensorizer, tokens: List[int], span: Tuple[int, int]) -> Tuple[int, int]:
     start_index, end_index = span
     max_len = len(tokens)
     while start_index > 0 and tensorizer.is_sub_word_id(tokens[start_index]):
@@ -617,11 +640,11 @@ def _extend_span_to_full_words(
 
 
 def _preprocess_reader_samples_chunk(
-    samples: List,
-    out_file_prefix: str,
-    gold_passages_file: str,
-    tensorizer: Tensorizer,
-    is_train_set: bool,
+        samples: List,
+        out_file_prefix: str,
+        gold_passages_file: str,
+        tensorizer: Tensorizer,
+        is_train_set: bool,
 ) -> str:
     chunk_id, samples = samples
     logger.info("Start batch %d", len(samples))

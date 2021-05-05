@@ -71,3 +71,7 @@ fp16_opt_level: O1
 
 # a list of tokens to avoid tokenization
 special_tokens:
+
+
+# TMP:
+tmp_encoder_cp_name:

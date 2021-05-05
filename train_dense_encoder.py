@@ -605,7 +605,16 @@ class BiEncoderTrainer(object):
         model_to_load = get_model_obj(self.biencoder)
         logger.info("Loading saved model state ...")
 
-        model_to_load.load_state(saved_state)
+        # TODO: tmp - only load only ctx encoder state
+        # """
+        logger.info("!!! loading only ctx encoder state")
+        prefix_len = len("ctx_model.")
+        ctx_state = {
+            key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith("ctx_model.")
+        }
+        model_to_load.ctx_model.load_state_dict(ctx_state, strict=False)
+        # """
+        # model_to_load.load_state(saved_state)
 
         if not self.cfg.ignore_checkpoint_optimizer:
             if saved_state.optimizer_dict:

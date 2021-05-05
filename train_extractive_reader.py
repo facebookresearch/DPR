@@ -74,12 +74,27 @@ class ReaderTrainer(object):
         model_file = get_model_file(self.cfg, self.cfg.checkpoint_file_name)
         saved_state = None
         if model_file:
+            logger.info('!! model_file = %s', model_file)
             saved_state = load_states_from_checkpoint(model_file)
             set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
         tensorizer, reader, optimizer = init_reader_components(
             cfg.encoder.encoder_model_type, cfg
         )
+
+         # TODO: tmp logic for speechQA
+        # -----------------------------------------------------------
+        new_tokens_prefix = "w2v"
+        new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
+        from dpr.models.hf_models import _add_special_tokens
+        _add_special_tokens(tensorizer.tokenizer, new_tokens)
+
+        cp_state = torch.load(cfg.tmp_encoder_cp_name)
+        key_shift = len('bert.')
+        logger.info('Loading pre-trained reader weights from %s', cfg.tmp_encoder_cp_name)
+        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith('bert.')}
+        reader.load_state_dict(cp_state, strict=False)
+        # -----------------------------------------------------------
 
         reader, optimizer = setup_for_distributed_mode(
             reader,
@@ -100,6 +115,7 @@ class ReaderTrainer(object):
         self.best_cp_name = None
         if saved_state:
             self._load_saved_state(saved_state)
+
 
     def get_data_iterator(
         self,
@@ -242,6 +258,7 @@ class ReaderTrainer(object):
                 cfg.max_n_answers,
                 is_train=False,
                 shuffle=False,
+                sep_token_id=self.tensorizer.tokenizer.sep_token_id,  # TODO: tmp
             )
 
             input = ReaderBatch(**move_to_device(input._asdict(), cfg.device))
@@ -249,7 +266,7 @@ class ReaderTrainer(object):
 
             with torch.no_grad():
                 start_logits, end_logits, relevance_logits = self.reader(
-                    input.input_ids, attn_mask
+                    input.input_ids, attn_mask, input.token_type_ids
                 )
 
             batch_predictions = self._get_best_prediction(
@@ -328,6 +345,7 @@ class ReaderTrainer(object):
                 cfg.max_n_answers,
                 is_train=True,
                 shuffle=True,
+                sep_token_id=self.tensorizer.tokenizer.sep_token_id,  # TODO: tmp
             )
 
             loss = self._calc_loss(input)
@@ -431,7 +449,7 @@ class ReaderTrainer(object):
         model_to_load = get_model_obj(self.reader)
         if saved_state.model_dict:
             logger.info("Loading model weights from saved state ...")
-            model_to_load.load_state_dict(saved_state.model_dict)
+            model_to_load.load_state_dict(saved_state.model_dict, strict=False)
 
         logger.info("Loading saved optimizer state ...")
         if saved_state.optimizer_dict:
@@ -522,10 +540,10 @@ class ReaderTrainer(object):
         questions_num, passages_per_question, _ = input.input_ids.size()
 
         if self.reader.training:
-            # start_logits, end_logits, rank_logits = self.reader(input.input_ids, attn_mask)
             loss = self.reader(
                 input.input_ids,
                 attn_mask,
+                input.token_type_ids,
                 input.start_positions,
                 input.end_positions,
                 input.answers_mask,
@@ -535,7 +553,7 @@ class ReaderTrainer(object):
             # TODO: remove?
             with torch.no_grad():
                 start_logits, end_logits, rank_logits = self.reader(
-                    input.input_ids, attn_mask
+                    input.input_ids, attn_mask, input.token_type_ids
                 )
 
             loss = compute_loss(

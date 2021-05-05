@@ -13,11 +13,11 @@ import collections
 import logging
 import string
 import unicodedata
+from functools import partial
 from multiprocessing import Pool as ProcessPool
+from typing import Tuple, List, Dict
 
 import regex as re
-from functools import partial
-from typing import Tuple, List, Dict
 
 from dpr.data.retriever_data import TableChunk
 from dpr.utils.tokenizers import SimpleTokenizer
@@ -81,6 +81,39 @@ def calculate_matches(
     return QAMatchStats(top_k_hits, scores)
 
 
+def calculate_matches_from_meta(
+    answers: List[List[str]],
+    closest_docs: List[Tuple[List[object], List[float]]],
+    workers_num: int,
+    match_type: str,
+    use_title: bool =False,
+) -> QAMatchStats:
+
+    tok_opts = {}
+    tokenizer = SimpleTokenizer(**tok_opts)
+
+    processes = ProcessPool(processes=workers_num)
+    logger.info("Matching answers in top docs...")
+    get_score_partial = partial(
+        check_answer_from_meta, match_type=match_type, tokenizer=tokenizer, use_title=use_title
+    )
+
+    questions_answers_docs = zip(answers, closest_docs)
+    scores = processes.map(get_score_partial, questions_answers_docs)
+
+    logger.info("Per question validation results len=%d", len(scores))
+
+    n_docs = len(closest_docs[0][0])
+    top_k_hits = [0] * n_docs
+    for question_hits in scores:
+        best_hit = next((i for i, x in enumerate(question_hits) if x), None)
+        if best_hit is not None:
+            top_k_hits[best_hit:] = [v + 1 for v in top_k_hits[best_hit:]]
+
+    return QAMatchStats(top_k_hits, scores)
+
+
+
 def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
     """Search through all the top docs to see if they have any of the answers."""
     answers, (doc_ids, doc_scores) = questions_answers_docs
@@ -98,6 +131,29 @@ def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
             hits.append(False)
             continue
 
+        if has_answer(answers, text, tokenizer, match_type):
+            answer_found = True
+        hits.append(answer_found)
+    return hits
+
+
+def check_answer_from_meta(questions_answers_docs, tokenizer, match_type,
+                           meta_body_idx: int = 1,
+                           meta_title_idx: int = 2,
+                           use_title: bool = False
+                           ) -> List[bool]:
+    """Search through all the top docs to see if they have any of the answers."""
+    answers, (docs_meta, doc_scores) = questions_answers_docs
+
+    hits = []
+
+    for i, doc_meta in enumerate(docs_meta):
+
+        text = doc_meta[meta_body_idx]
+        title = doc_meta[meta_title_idx] if len(doc_meta) > meta_title_idx else ''
+        if use_title:
+            text=title+' . ' + text
+        answer_found = False
         if has_answer(answers, text, tokenizer, match_type):
             answer_found = True
         hits.append(answer_found)

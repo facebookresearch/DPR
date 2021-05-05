@@ -57,10 +57,7 @@ class RepSpecificTokenSelector(RepTokenSelector):
         token_indexes_result = []
         found_idx_cnt = 0
         for i in range(bsz):
-            if (
-                found_idx_cnt < token_indexes.size(0)
-                and token_indexes[found_idx_cnt][0] == i
-            ):
+            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:
                 # this samples has the special token
                 token_indexes_result.append(token_indexes[found_idx_cnt])
                 found_idx_cnt += 1
@@ -157,14 +154,8 @@ class JsonQADataset(Dataset):
         r.query = self._process_query(json_sample["question"])
 
         positive_ctxs = json_sample["positive_ctxs"]
-        negative_ctxs = (
-            json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
-        )
-        hard_negative_ctxs = (
-            json_sample["hard_negative_ctxs"]
-            if "hard_negative_ctxs" in json_sample
-            else []
-        )
+        negative_ctxs = json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
+        hard_negative_ctxs = json_sample["hard_negative_ctxs"] if "hard_negative_ctxs" in json_sample else []
 
         for ctx in positive_ctxs + negative_ctxs + hard_negative_ctxs:
             if "title" not in ctx:
@@ -187,9 +178,7 @@ class JsonQADataset(Dataset):
     def get_qas(self) -> Tuple[List[str], List[str]]:
         return [s["question"] for s in self.data], [s["answers"] for s in self.data]
 
-    def get_qas_range(
-        self, start_idx: int, end_idx: int
-    ) -> Tuple[List[str], List[str]]:
+    def get_qas_range(self, start_idx: int, end_idx: int) -> Tuple[List[str], List[str]]:
         return (
             [s["question"] for s in self.data[start_idx:end_idx]],
             [s["answers"] for s in self.data[start_idx:end_idx]],
@@ -198,6 +187,10 @@ class JsonQADataset(Dataset):
 
 def normalize_passage(ctx_text: str):
     ctx_text = ctx_text.replace("\n", " ").replace("’", "'")
+    if ctx_text.startswith('"'):
+        ctx_text = ctx_text[1:]
+    if ctx_text.endswith('"'):
+        ctx_text = ctx_text[:-1]
     return ctx_text
 
 
@@ -394,13 +387,7 @@ def read_nq_tables_jsonl(path: str) -> Dict[str, Table]:
                 total_tables += 1
 
                 # calc amount of non empty rows
-                non_empty_rows = sum(
-                    [
-                        1
-                        for r in t.body
-                        if r.cells and any([True for c in r.cells if c.value_tokens])
-                    ]
-                )
+                non_empty_rows = sum([1 for r in t.body if r.cells and any([True for c in r.cells if c.value_tokens])])
 
                 if non_empty_rows <= 1:
                     single_row_tables += 1
@@ -476,13 +463,11 @@ class JsonLTablesQADataset(Dataset):
         hard_negative_ctxs = hard_negative_ctxs[0 : self.max_negatives]
 
         r.positive_passages = [
-            BiEncoderPassage(self.linearize_func(self, ctx, True), ctx["caption"])
-            for ctx in positive_ctxs
+            BiEncoderPassage(self.linearize_func(self, ctx, True), ctx["caption"]) for ctx in positive_ctxs
         ]
         r.negative_passages = []
         r.hard_negative_passages = [
-            BiEncoderPassage(self.linearize_func(self, ctx, False), ctx["caption"])
-            for ctx in hard_negative_ctxs
+            BiEncoderPassage(self.linearize_func(self, ctx, False), ctx["caption"]) for ctx in hard_negative_ctxs
         ]
         return r
 

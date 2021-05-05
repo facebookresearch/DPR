@@ -3,9 +3,9 @@ import logging
 import os
 from typing import List
 
+import numpy as np
 import soundfile as sf
 import torch
-
 # import torchaudio
 import torch.nn.functional as F
 from omegaconf import DictConfig
@@ -15,12 +15,17 @@ from dpr.data.biencoder_data import (
     BiEncoderPassage,
     get_dpr_files,
     normalize_passage,
-    JsonQADataset,
-)
+    JsonQADataset)
 from dpr.data.retriever_data import QASrc, QASample
 from dpr.utils.data_utils import read_data_from_json_files
 
 logger = logging.getLogger(__name__)
+
+
+class SpeechQASample(QASample):
+    def __init__(self, query: T, id, answers: List[str], query_text: str = None):
+        super().__init__(query, id, answers)
+        self.query_text = query_text
 
 
 class BiEncoderMixedSample(object):
@@ -110,6 +115,92 @@ class WavJsonTextDataset(JsonQADataset):
         return len(self.data)
 
 
+class QuantizedJsonTextDataset(JsonQADataset):
+    def __init__(
+        self,
+        json_file: str,
+        wav_tsv_file: str,
+        km_file: str,
+        max_audio_len: int,
+        audio_file_prefix: str = "aud_dn_",
+        quanized_token_prefix: str = "w2v",
+        selector: DictConfig = None,
+        encoder_type: str = None,
+        shuffle_positives: bool = False,
+        normalize_text: bool = False,
+    ):
+        super().__init__(
+            json_file,
+            selector,
+            encoder_type=encoder_type,
+            shuffle_positives=shuffle_positives,
+            normalize=normalize_text,
+        )
+        self.wav_tsv_file = wav_tsv_file
+        self.audio_file_prefix = audio_file_prefix
+        self.km_file = km_file
+        self.quanized_token_prefix = quanized_token_prefix
+        self.id_to_audio_file_map = None
+        self.max_audio_len = max_audio_len
+
+        # tmp
+        self.cut_samples = 0
+
+    def load_data(self):
+
+        orig_to_manifest_id_map = {}
+        prefix_len = len(self.audio_file_prefix)
+        suffix_len = len(".wav")
+        logger.info("Reading audio manifest files: %s", self.wav_tsv_file)
+        with open(os.path.join(self.wav_tsv_file), "r") as fp:  # read tsv file
+            lines = fp.read().split("\n")
+            lines.pop(0)
+            manifest_id = 0
+            for line in lines:
+                if len(line) == 0:
+                    continue
+                file = line.split("\t")[0]
+                orig_id = int(file[prefix_len:-suffix_len])
+                assert orig_id not in orig_to_manifest_id_map
+                orig_to_manifest_id_map[orig_id] = manifest_id
+                manifest_id += 1
+            logging.info("last manifest_id %d", manifest_id)
+        logging.info("orig_to_manifest_id_map %d", len(orig_to_manifest_id_map))
+
+        self.data_files = get_dpr_files(self.file)
+        logger.info("Data files: %s", self.data_files)
+        data = read_data_from_json_files(self.data_files)
+        # filter those without positive ctx
+        self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
+        logger.info("Total cleaned data size: {}".format(len(self.data)))
+
+        logger.info("Reading quantized audio files: %s", self.km_file)
+        kms = []
+        with open(self.km_file, "r") as ifile:
+            reader = csv.reader(ifile, delimiter="\t")
+            for i, row in enumerate(reader):
+                assert len(row) == 1
+                km_query_tokens = row[0].split()
+                if len(km_query_tokens) > self.max_audio_len:
+                    self.cut_samples+=1
+                    km_query_tokens = km_query_tokens[0:self.max_audio_len]
+                kms.append(km_query_tokens)
+
+        logging.info("Loaded quantized samples %d", len(kms))
+
+        # inject quantized queries as string tokens to the main data
+        assert len(data) == len(kms)
+        for orig_id, sample in enumerate(data):
+            manifest_id = orig_to_manifest_id_map[orig_id + 1]
+            logging.debug("orig_id=%d manifest_id=%d", orig_id, manifest_id)
+            km = kms[manifest_id]
+            quanized_audio_q = ["[" + self.quanized_token_prefix + str(t) + "]" for t in km]
+            quanized_audio_q = " ".join(quanized_audio_q)
+            orig_q=sample["question"]
+            sample["question"]=quanized_audio_q
+            sample["orig_question"] = orig_q
+
+
 class WavTextQADataset(QASrc):
     def __init__(
         self,
@@ -118,6 +209,8 @@ class WavTextQADataset(QASrc):
         audio_file_prefix: str = "aud_dn_",
         max_features_sz: int = 100000,
         normalize_audio: bool = False,
+        delim: str ="\t",
+        question_pos:int=0,
     ):
         super().__init__(file)
         self.wav_tsv_file = wav_tsv_file
@@ -125,11 +218,12 @@ class WavTextQADataset(QASrc):
         self.audio_file_prefix = audio_file_prefix
         self.max_features_sz = max_features_sz
         self.normalize_audio = normalize_audio
+        self.delim=delim
 
         # TODO: tmp
         self.length_buckets = {}
 
-    def __getitem__(self, index) -> QASample:
+    def __getitem__(self, index) -> SpeechQASample:
         sample = self.data[index]
         sample_id = index + 1
         audio_file = self.id_to_audio_file_map[sample_id]
@@ -155,21 +249,35 @@ class WavTextQADataset(QASrc):
         data = []
 
         with open(self.file) as ifile:
-            reader = csv.reader(ifile, delimiter="\t")
+            reader = csv.reader(ifile, delimiter=self.delim)
             for row in reader:
                 question = row[0]
                 answers = eval(row[1])
-                data.append(QASample(self._process_question(question), None, answers))
+                data.append(SpeechQASample(None, None, answers, query_text=self._process_question(question)))
 
         self.data = data
         self.id_to_audio_file_map = _get_id_to_audio_file_map(self.audio_file_prefix, self.wav_tsv_file)
         logger.info("id_to_audio_file_map  size: %d", len(self.id_to_audio_file_map))
 
 
+class SpeechReaderPreTrainingSample(object):
+    """
+    Container to collect all Q&A passages data per singe question
+    """
+
+    def __init__(
+        self,
+        audio: np.array,
+        text_passages: List[str],
+    ):
+        self.audio = audio
+        self.text_passages = text_passages
+
+
 def _read_audio(fname):
     """ Load an audio file and return PCM along with the sample rate """
     wav, sr = sf.read(fname)
-    assert sr == 16e3
+    assert sr == 16e3, f"File={fname}, sr={sr}"
     return wav
 
 

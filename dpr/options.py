@@ -38,15 +38,28 @@ def set_cfg_params_from_state(state: dict, cfg: DictConfig):
     if "encoder" in state:
         saved_encoder_params = state["encoder"]
         # TODO: try to understand why cfg.encoder = state["encoder"] doesn't work
+
         for k, v in saved_encoder_params.items():
+
+            # TODO: tmp fix
+            if k=='q_wav2vec_model_cfg':
+                k='q_encoder_model_cfg'
+            if k=='q_wav2vec_cp_file':
+                k='q_encoder_cp_file'
+            if k=='q_wav2vec_cp_file':
+                k='q_encoder_cp_file'
+
+
+
             setattr(cfg.encoder, k, v)
     else:  # 'old' checkpoints backward compatibility support
-        cfg.do_lower_case = state["do_lower_case"]
-        cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
-        cfg.encoder.encoder_model_type = state["encoder_model_type"]
-        cfg.encoder.pretrained_file = state["pretrained_file"]
-        cfg.encoder.projection_dim = state["projection_dim"]
-        cfg.encoder.sequence_length = state["sequence_length"]
+        pass
+        # TODO: tmp
+        # cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
+        # cfg.encoder.encoder_model_type = state["encoder_model_type"]
+        # cfg.encoder.pretrained_file = state["pretrained_file"]
+        # cfg.encoder.projection_dim = state["projection_dim"]
+        # cfg.encoder.sequence_length = state["sequence_length"]
 
 
 def get_encoder_params_state_from_cfg(cfg: DictConfig):
