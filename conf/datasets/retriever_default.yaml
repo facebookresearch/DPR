@@ -23,3 +23,11 @@ trivia_train:
 trivia_dev:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.trivia-dev
+
+webq_dev:
+  _target_: dpr.data.retriever_data.CsvQASrc
+  file: data.retriever.qas.webq-test
+  
+curatedtrec_dev:
+  _target_: dpr.data.retriever_data.CsvQASrc
+  file: data.retriever.qas.curatedtrec-test
