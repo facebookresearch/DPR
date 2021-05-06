@@ -97,6 +97,12 @@ RESOURCES_MAP = {
         "compressed": True,
         "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
     },
+    "data.retriever.curatedtrec-dev": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-curatedtrec-dev.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
+    },
     "data.retriever.qas.nq-dev": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/nq-dev.qa.csv",
         "original_ext": ".csv",
