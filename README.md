@@ -3,19 +3,27 @@
 Dense Passage Retrieval (`DPR`) - is a set of tools and models for state-of-the-art open-domain Q&A research.
 It is based on the following paper:
 
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, Wen-tau Yih. [Dense Passage Retrieval for Open-Domain Question Answering.](https://arxiv.org/abs/2004.04906) Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP), pages 6769–6781, 2020.
 
+If you find this work useful, please cite the following paper:
 
-Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, Wen-tau Yih, [Dense Passage Retrieval for Open-Domain Question Answering](https://arxiv.org/abs/2004.04906), Preprint 2020.
-
-If you find this paper or this code useful, please cite this paper:
 ```
-@article{karpukhin2020dense,
-  title={Dense Passage Retrieval for Open-Domain Question Answering},
-  author={Karpukhin, Vladimir and O{\u{g}}uz, Barlas and Min, Sewon and Wu, Ledell and Edunov, Sergey and Chen, Danqi and Yih, Wen-tau},
-  journal={arXiv preprint arXiv:2004.04906},
-  year={2020}
+@inproceedings{karpukhin-etal-2020-dense,
+    title = "Dense Passage Retrieval for Open-Domain Question Answering",
+    author = "Karpukhin, Vladimir and Oguz, Barlas and Min, Sewon and Lewis, Patrick and Wu, Ledell and Edunov, Sergey and Chen, Danqi and Yih, Wen-tau",
+    booktitle = "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+    month = nov,
+    year = "2020",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/2020.emnlp-main.550",
+    doi = "10.18653/v1/2020.emnlp-main.550",
+    pages = "6769--6781",
 }
 ```
+
+If you're interesting in reproducing experimental results in the paper based on our model checkpoints (i.e., don't want to train the encoders from scratch), you might consider using the [Pyserini toolkit](https://github.com/castorini/pyserini/blob/master/docs/experiments-dpr.md), which has the experiments nicely packaged in via `pip`.
+Their toolkit also reports higher BM25 and hybrid scores.
 
 ## Features
 1. Dense retriever model is based on bi-encoder architecture.
@@ -356,20 +364,6 @@ We provide all input and intermediate results for e2e pipeline for NQ dataset an
 ## Misc.
 - TREC validation requires regexp based matching. We support only retriever validation in the regexp mode. See --match parameter option.
 - WebQ validation requires entity normalization, which is not included as of now.
-
-## Reference
-
-If you plan to use `DPR` in your project, please consider citing [our paper](https://arxiv.org/abs/2004.04906):
-```
-@misc{karpukhin2020dense,
-    title={Dense Passage Retrieval for Open-Domain Question Answering},
-    author={Vladimir Karpukhin and Barlas Oğuz and Sewon Min and Patrick Lewis and Ledell Wu and Sergey Edunov and Danqi Chen and Wen-tau Yih},
-    year={2020},
-    eprint={2004.04906},
-    archivePrefix={arXiv},
-    primaryClass={cs.CL}
-}
-```
 
 ## License
 DPR is CC-BY-NC 4.0 licensed as of now.
