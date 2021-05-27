@@ -333,7 +333,7 @@ Just use instructions for "Generating representations for large documents set". 
 ```bash
 
 python dense_retriever.py \
-	model_file={path to the beast chekpoint or use our proivded checkpoints (Resource names like checkpoint.retriever.*)  } \
+	model_file={path to the best checkpoint or use our proivded checkpoints (Resource names like checkpoint.retriever.*)  } \
 	qa_dataset=nq_test \
 	ctx_datatsets=[dpr_wiki] \
 	encoded_ctx_files=["{glob expression for generated embedding files}"] \
