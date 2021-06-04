@@ -551,7 +551,7 @@ class ReaderTrainer(object):
         if cfg.n_gpu > 1:
             loss = loss.mean()
         if cfg.train.gradient_accumulation_steps > 1:
-            loss = loss / cfg.trani.gradient_accumulation_steps
+            loss = loss / cfg.train.gradient_accumulation_steps
 
         return loss
 
