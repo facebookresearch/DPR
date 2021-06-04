@@ -13,11 +13,12 @@ from omegaconf import DictConfig
 from dpr.data.biencoder_data import (
     BiEncoderPassage,
     normalize_passage,
-    normalize_question,
     get_dpr_files,
     read_nq_tables_jsonl,
     split_tables_to_chunks,
 )
+
+from dpr.utils.data_utils import normalize_question
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class CsvQASrc(QASrc):
                 if self.id_col >= 0:
                     id = row[self.id_col]
                 data.append(QASample(self._process_question(question), id, answers))
+        # self.data = data[1000000:]
         self.data = data
 
 
@@ -247,18 +249,20 @@ class CsvCtxSrc(RetrieverData):
 
     def load_data_to(self, ctxs: Dict[object, BiEncoderPassage]):
         super().load_data()
+        logger.info("!!! reading file %s", self.file)
         with open(self.file) as ifile:
             # reader = csv.reader(ifile, delimiter="\t")
             # for row in reader:
             for row in ifile:
                 row = row.strip().split("\t")
+
                 if row[self.id_col] == "id":
                     continue
                 if self.id_prefix:
                     sample_id = self.id_prefix + str(row[self.id_col])
                 else:
                     sample_id = row[self.id_col]
-                passage = row[self.text_col]
+                passage = row[self.text_col].strip('"')
                 if self.normalize:
                     passage = normalize_passage(passage)
                 ctxs[sample_id] = BiEncoderPassage(passage, row[self.title_col])

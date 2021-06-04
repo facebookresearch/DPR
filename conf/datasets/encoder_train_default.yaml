@@ -31,6 +31,23 @@ squad1_dev:
   _target_: dpr.data.biencoder_data.JsonQADataset
   file: data.retriever.squad1-dev
 
+webq_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: data.retriever.webq-train
+
+webq_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: data.retriever.webq-dev
+
+curatedtrec_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: data.retriever.curatedtrec-train
+
+curatedtrec_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: data.retriever.curatedtrec-dev
+
+
 nq_speech_mixed_train:
   _target_: dpr.data.speech_data.WavJsonTextDataset
   json_file: /checkpoint/vladk/dpr_open_source/biencoder-nq-train.json
@@ -56,4 +73,12 @@ nq_speech_quantized_dev:
   wav_tsv_file: /checkpoint/vladk/speechqa/data/dev/dev.tsv
   km_file: /checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/dev_deduped_0_1.km
   max_audio_len: 176
+
+paq_4m_speech_mixed_train:
+  _target_: dpr.data.speech_data.WavPAQTextDataset
+  jsonl_file: /private/home/barlaso/data/paq/PAQ.dpr.train.jsonl
+  manifest_txt_file: /checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt
+  wav_root_dir: /checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions_audio/denoised/
+  normalize_audio: False
+  total_data_size: 4000000
 

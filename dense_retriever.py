@@ -14,6 +14,7 @@ import json
 import logging
 import pickle
 import time
+import zlib
 from typing import List, Tuple, Dict, Iterator
 
 import hydra
@@ -23,7 +24,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch import Tensor as T
 from torch import nn
 
-from dpr.data.biencoder_data import RepTokenSelector
+from distributed_faiss.index_cfg import IndexCfg
+from dpr.utils.data_utils import RepTokenSelector
 from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches, calculate_matches_from_meta
 from dpr.data.retriever_data import KiltCsvCtxSrc, TableChunk
 from dpr.data.speech_data import SpeechQASample
@@ -31,14 +33,13 @@ from dpr.indexer.faiss_indexers import (
     DenseIndexer,
 )
 from dpr.models import init_biencoder_components
-from dpr.models.biencoder import BiEncoder, _select_span_with_token
+from dpr.models.biencoder import (
+    BiEncoder,
+    _select_span_with_token,
+)
 from dpr.options import setup_logger, setup_cfg_gpu, set_cfg_params_from_state
 from dpr.utils.data_utils import Tensorizer
-from dpr.utils.model_utils import (
-    setup_for_distributed_mode,
-    get_model_obj,
-    load_states_from_checkpoint,
-)
+from dpr.utils.model_utils import setup_for_distributed_mode, get_model_obj, load_states_from_checkpoint, move_to_device
 
 logger = logging.getLogger()
 setup_logger(logger)
@@ -82,7 +83,7 @@ def generate_question_vectors(
                 from dpr.models.reader import _pad_to_len
                 batch_tensors = [_pad_to_len(q.squeeze(0), 0, max_vector_len) for q in batch_tensors]
             """
-            # logger.info("!!! batch_tensors %s %s", len(batch_tensors), batch_tensors[0].size())
+
             q_ids_batch = torch.stack(batch_tensors, dim=0).cuda()
             q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
             q_attn_mask = tensorizer.get_attn_mask(q_ids_batch)
@@ -183,9 +184,6 @@ class LocalFaissRetriever(DenseRetriever):
 
 
 class DenseRPCRetriever(DenseRetriever):
-
-
-
     def __init__(
         self,
         question_encoder: nn.Module,
@@ -193,23 +191,30 @@ class DenseRPCRetriever(DenseRetriever):
         tensorizer: Tensorizer,
         index_cfg_path: str,
         dim: int,
-        use_l2_conversion: bool = False
+        use_l2_conversion: bool = False,
+        nprobe: int = 256,
     ):
         from distributed_faiss.client import IndexClient
 
         super().__init__(question_encoder, batch_size, tensorizer)
         self.dim = dim
         self.index_id = "dr"
+        self.nprobe = nprobe
         logger.info("Connecting to index server ...")
         self.index_client = IndexClient(index_cfg_path)
-        self.use_l2_conversion=use_l2_conversion
+        self.use_l2_conversion = use_l2_conversion
         logger.info("Connected")
 
     def load_index(self, index_id):
         self.index_id = index_id
-        # self.index_client.save_index(self.index_id)
         logger.info("Loading remote index %s", index_id)
-        self.index_client.load_index(self.index_id,force_reload=False)
+
+        idx_cfg = IndexCfg()
+        idx_cfg.nprobe = self.nprobe
+        if self.use_l2_conversion:
+            idx_cfg.metric = "l2"
+
+        self.index_client.load_index(self.index_id, cfg=idx_cfg, force_reload=False)
         logger.info("Index loaded")
         self._wait_index_ready(index_id)
 
@@ -265,16 +270,18 @@ class DenseRPCRetriever(DenseRetriever):
             aux_dim = np.zeros(len(query_vectors), dtype="float32")
             query_vectors = np.hstack((query_vectors, aux_dim.reshape(-1, 1)))
             logger.info("query_hnsw_vectors %s", query_vectors.shape)
-            self.index_client.cfg.metric = 'l2'
+            self.index_client.cfg.metric = "l2"
 
         results = []
         for i in range(0, query_vectors.shape[0], search_batch):
             time0 = time.time()
             query_batch = query_vectors[i : i + search_batch]
             logger.info("query_batch: %s", query_batch.shape)
-            scores, meta = self.index_client.search(query_batch, top_docs, self.index_id)
+            # scores, meta = self.index_client.search(query_batch, top_docs, self.index_id)
 
-            #logger.info("!!! meta  %s", meta)
+            scores, meta = self.index_client.search_with_filter(
+                query_batch, top_docs, self.index_id, filter_pos=3, filter_value=True
+            )
 
             logger.info("index search time: %f sec.", time.time() - time0)
             results.extend([(meta[q], scores[q]) for q in range(len(scores))])
@@ -300,6 +307,7 @@ def validate(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
+    logger.info("!!! passages %s", len(passages))
     match_stats = calculate_matches(passages, answers, result_ctx_ids, workers_num, match_type)
     top_k_hits = match_stats.top_k_hits
 
@@ -314,9 +322,12 @@ def validate_from_meta(
     result_ctx_ids: List[Tuple[List[object], List[float]]],
     workers_num: int,
     match_type: str,
+    meta_compressed: bool,
 ) -> List[List[bool]]:
 
-    match_stats = calculate_matches_from_meta(answers, result_ctx_ids, workers_num, match_type, use_title=True)
+    match_stats = calculate_matches_from_meta(
+        answers, result_ctx_ids, workers_num, match_type, use_title=True, meta_compressed=meta_compressed
+    )
     top_k_hits = match_stats.top_k_hits
 
     logger.info("Validation results: top k documents hits %s", top_k_hits)
@@ -345,26 +356,25 @@ def save_results(
         ctxs_num = len(hits)
 
         results_item = {
-                "question": q,
-                "answers": q_answers,
-                "ctxs": [
-                    {
-                        "id": results_and_scores[0][c],
-                        "title": docs[c][1],
-                        "text": docs[c][0],
-                        "score": scores[c],
-                        "has_answer": hits[c],
-                    }
-                    for c in range(ctxs_num)
-                ],
-            }
+            "question": q,
+            "answers": q_answers,
+            "ctxs": [
+                {
+                    "id": results_and_scores[0][c],
+                    "title": docs[c][1],
+                    "text": docs[c][0],
+                    "score": scores[c],
+                    "has_answer": hits[c],
+                }
+                for c in range(ctxs_num)
+            ],
+        }
 
-        #if questions_extra_attr and questions_extra:
+        # if questions_extra_attr and questions_extra:
         #    extra = questions_extra[i]
         #    results_item[questions_extra_attr] = extra
 
         merged_data.append(results_item)
-
 
     with open(out_file, "w") as writer:
         writer.write(json.dumps(merged_data, indent=4) + "\n")
@@ -378,6 +388,7 @@ def save_results_from_meta(
     top_passages_and_scores: List[Tuple[List[object], List[float]]],
     per_question_hits: List[List[bool]],
     out_file: str,
+    rpc_meta_compressed: bool = False,
 ):
     # join passages text with the result ids, their questions and assigning has|no answer labels
     merged_data = []
@@ -391,19 +402,21 @@ def save_results_from_meta(
         ctxs_num = len(hits)
 
         results_item = {
-                "question": q,
-                "answers": q_answers,
-                "ctxs": [
-                    {
-                        "id": docs[c][0],
-                        "title": docs[c][2],
-                        "text": docs[c][1],
-                        "score": scores[c],
-                        "has_answer": hits[c],
-                    }
-                    for c in range(ctxs_num)
-                ],
-            }
+            "question": q,
+            "answers": q_answers,
+            "ctxs": [
+                {
+                    "id": docs[c][0],
+                    "title": zlib.decompress(docs[c][2]).decode() if rpc_meta_compressed else docs[c][2],
+                    "text": zlib.decompress(docs[c][1]).decode() if rpc_meta_compressed else docs[c][1],
+                    # "is_wiki": docs[c][3],
+                    "score": scores[c],
+                    "has_answer": hits[c],
+                }
+                for c in range(ctxs_num)
+            ],
+        }
+        # logger.info("!!! r=%s", results_item)
         merged_data.append(results_item)
 
     with open(out_file, "w") as writer:
@@ -452,9 +465,11 @@ def get_all_passages(ctx_sources):
     all_passages = {}
     for ctx_src in ctx_sources:
         ctx_src.load_data_to(all_passages)
+        logger.info("Loaded ctx data: %d", len(all_passages))
 
     if len(all_passages) == 0:
         raise RuntimeError("No passages data found. Please specify ctx_file param properly.")
+    return all_passages
 
 
 @hydra.main(config_path="conf", config_name="dense_retriever")
@@ -471,6 +486,7 @@ def main(cfg: DictConfig):
 
     logger.info("Loading saved model state ...")
     encoder.load_state(saved_state, strict=False)
+
     encoder_path = cfg.encoder_path
     if encoder_path:
         logger.info("Selecting encoder: %s", encoder_path)
@@ -481,6 +497,7 @@ def main(cfg: DictConfig):
 
     encoder, _ = setup_for_distributed_mode(encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16)
     encoder.eval()
+
     model_to_load = get_model_obj(encoder)
     vector_size = model_to_load.get_out_size()
     logger.info("Encoder vector_size=%d", vector_size)
@@ -498,7 +515,6 @@ def main(cfg: DictConfig):
     logger.info("qa_dataset: %s", ds_key)
 
     qa_src = hydra.utils.instantiate(cfg.datasets[ds_key])
-
     qa_src.load_data()
 
     total_queries = len(qa_src)
@@ -509,13 +525,20 @@ def main(cfg: DictConfig):
             questions_text.append(qa_sample.query_text)
         questions.append(question)
         question_answers.append(answers)
-    logger.info('questions_text len %d', len(questions_text))
+
+    logger.info("questions len %d", len(questions))
+    logger.info("questions_text len %d", len(questions_text))
 
     if cfg.rpc_retriever_cfg_file:
         index_buffer_sz = 1000
-        retriever = DenseRPCRetriever(encoder, cfg.batch_size, tensorizer, cfg.rpc_retriever_cfg_file, vector_size,
-                                      use_l2_conversion=cfg.use_l2_conversion
-                                      )
+        retriever = DenseRPCRetriever(
+            encoder,
+            cfg.batch_size,
+            tensorizer,
+            cfg.rpc_retriever_cfg_file,
+            vector_size,
+            use_l2_conversion=cfg.use_l2_conversion,
+        )
     else:
         index = hydra.utils.instantiate(cfg.indexers[cfg.indexer])
         logger.info("Local Index class %s ", type(index))
@@ -530,28 +553,7 @@ def main(cfg: DictConfig):
         logger.info("Using custom representation token selector")
         retriever.selector = qa_src.selector
 
-    id_prefixes = []
-    ctx_sources = []
-    for ctx_src in cfg.ctx_datatsets:
-        ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
-        id_prefixes.append(ctx_src.id_prefix)
-        ctx_sources.append(ctx_src)
-
-    logger.info("id_prefixes per dataset: %s", id_prefixes)
-
-    # index all passages
-    ctx_files_patterns = cfg.encoded_ctx_files
     index_path = cfg.index_path
-
-    logger.info("ctx_files_patterns: %s", ctx_files_patterns)
-    if ctx_files_patterns:
-        assert len(ctx_files_patterns) == len(id_prefixes), "ctx len={} pref leb={}".format(
-            len(ctx_files_patterns), len(id_prefixes)
-        )
-    else:
-        assert (
-            index_path or cfg.rpc_index_id
-        ), "Either encoded_ctx_files or index_path pr rpc_index_id parameter should be set."
 
     if cfg.rpc_retriever_cfg_file and cfg.rpc_index_id:
         retriever.load_index(cfg.rpc_index_id)
@@ -559,6 +561,30 @@ def main(cfg: DictConfig):
         logger.info("Index path: %s", index_path)
         retriever.index.deserialize(index_path)
     else:
+        # send data for indexing
+        id_prefixes = []
+        ctx_sources = []
+        for ctx_src in cfg.ctx_datatsets:
+            ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
+            id_prefixes.append(ctx_src.id_prefix)
+            ctx_sources.append(ctx_src)
+            logger.info("!!! ctx_sources: %s", type(ctx_src))
+
+        logger.info("id_prefixes per dataset: %s", id_prefixes)
+
+        # index all passages
+        ctx_files_patterns = cfg.encoded_ctx_files
+
+        logger.info("ctx_files_patterns: %s", ctx_files_patterns)
+        if ctx_files_patterns:
+            assert len(ctx_files_patterns) == len(id_prefixes), "ctx len={} pref leb={}".format(
+                len(ctx_files_patterns), len(id_prefixes)
+            )
+        else:
+            assert (
+                index_path or cfg.rpc_index_id
+            ), "Either encoded_ctx_files or index_path pr rpc_index_id parameter should be set."
+
         input_paths = []
         path_id_prefixes = []
         for i, pattern in enumerate(ctx_files_patterns):
@@ -574,7 +600,6 @@ def main(cfg: DictConfig):
 
     # get top k results
     top_results_and_scores = retriever.get_top_docs(questions_tensor.numpy(), cfg.n_docs)
-    #return
 
     if cfg.use_rpc_meta:
         questions_doc_hits = validate_from_meta(
@@ -582,9 +607,17 @@ def main(cfg: DictConfig):
             top_results_and_scores,
             cfg.validation_workers,
             cfg.match,
+            cfg.rpc_meta_compressed,
         )
         if cfg.out_file:
-            save_results_from_meta(questions, question_answers, top_results_and_scores, questions_doc_hits, cfg.out_file)
+            save_results_from_meta(
+                questions,
+                question_answers,
+                top_results_and_scores,
+                questions_doc_hits,
+                cfg.out_file,
+                cfg.rpc_meta_compressed,
+            )
     else:
         all_passages = get_all_passages(ctx_sources)
         if cfg.validate_as_tables:
@@ -596,7 +629,6 @@ def main(cfg: DictConfig):
                 cfg.validation_workers,
                 cfg.match,
             )
-
 
         else:
             questions_doc_hits = validate(

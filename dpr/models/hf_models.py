@@ -55,7 +55,7 @@ def get_bert_biencoder_components(cfg, inference_only: bool = False, **kwargs):
         **kwargs
     )
 
-    fix_ctx_encoder = cfg.fix_ctx_encoder if hasattr(cfg, "fix_ctx_encoder") else False
+    fix_ctx_encoder = cfg.encoder.fix_ctx_encoder if hasattr(cfg.encoder, "fix_ctx_encoder") else False
 
     biencoder = BiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
 

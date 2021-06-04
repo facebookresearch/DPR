@@ -79,6 +79,30 @@ RESOURCES_MAP = {
         "compressed": True,
         "desc": "SQUAD 1.1 dev subset with passages pools for the Retriever train time validation",
     },
+    "data.retriever.webq-train": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-webquestions-train.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "WebQuestions dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.webq-dev": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-webquestions-dev.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "WebQuestions dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.curatedtrec-train": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-curatedtrec-train.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.curatedtrec-dev": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-curatedtrec-dev.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
+    },
     "data.retriever.qas.nq-dev": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/nq-dev.qa.csv",
         "original_ext": ".csv",
@@ -125,6 +149,18 @@ RESOURCES_MAP = {
         "compressed": False,
         "desc": "Trivia test subset for Retriever validation and IR results generation",
     },
+    "data.retriever.qas.webq-test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/webquestions-test.qa.csv",
+        "original_ext": ".csv",
+        "compressed": False,
+        "desc": "WebQuestions test subset for Retriever validation and IR results generation",
+    },
+    "data.retriever.qas.curatedtrec-test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/curatedtrec-test.qa.csv",
+        "original_ext": ".csv",
+        "compressed": False,
+        "desc": "CuratedTrec test subset for Retriever validation and IR results generation",
+    },
     "data.gold_passages_info.nq_train": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/nq_gold_info/nq-train_gold_info.json.gz",
         "original_ext": ".json",
@@ -167,9 +203,7 @@ RESOURCES_MAP = {
     },
     "data.retriever_results.nq.single.wikipedia_passages": {
         "s3_url": [
-            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single/nq/wiki_passages_{}".format(
-                i
-            )
+            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single/nq/wiki_passages_{}".format(i)
             for i in range(50)
         ],
         "original_ext": ".pkl",
@@ -179,9 +213,7 @@ RESOURCES_MAP = {
     },
     "data.retriever_results.nq.single-adv-hn.wikipedia_passages": {
         "s3_url": [
-            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single-adv-hn/nq/wiki_passages_{}".format(
-                i
-            )
+            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single-adv-hn/nq/wiki_passages_{}".format(i)
             for i in range(50)
         ],
         "original_ext": ".pkl",
@@ -237,12 +269,7 @@ RESOURCES_MAP = {
         "The model is HF bert-base-uncased",
     },
     "data.reader.nq.single.train": {
-        "s3_url": [
-            "https://dl.fbaipublicfiles.com/dpr/data/reader/nq/single/train.{}.pkl".format(
-                i
-            )
-            for i in range(8)
-        ],
+        "s3_url": ["https://dl.fbaipublicfiles.com/dpr/data/reader/nq/single/train.{}.pkl".format(i) for i in range(8)],
         "original_ext": ".pkl",
         "compressed": False,
         "desc": "Reader model NQ train dataset input data preprocessed from retriever results (also trained on NQ)",
@@ -264,9 +291,7 @@ RESOURCES_MAP = {
     },
     "data.reader.trivia.multi-hybrid.train": {
         "s3_url": [
-            "https://dl.fbaipublicfiles.com/dpr/data/reader/trivia/multi-hybrid/train.{}.pkl".format(
-                i
-            )
+            "https://dl.fbaipublicfiles.com/dpr/data/reader/trivia/multi-hybrid/train.{}.pkl".format(i)
             for i in range(8)
         ],
         "original_ext": ".pkl",
@@ -387,26 +412,18 @@ def download_resource(
 
     logger.info("Download root_dir %s", root_dir)
 
-    save_root = os.path.join(
-        root_dir, "downloads", *path_names[:-1]
-    )  # last segment is for file name
+    save_root = os.path.join(root_dir, "downloads", *path_names[:-1])  # last segment is for file name
 
     pathlib.Path(save_root).mkdir(parents=True, exist_ok=True)
 
-    local_file_uncompressed = os.path.abspath(
-        os.path.join(save_root, path_names[-1] + original_ext)
-    )
+    local_file_uncompressed = os.path.abspath(os.path.join(save_root, path_names[-1] + original_ext))
     logger.info("File to be downloaded as %s", local_file_uncompressed)
 
     if os.path.exists(local_file_uncompressed):
         logger.info("File already exist %s", local_file_uncompressed)
         return save_root, local_file_uncompressed
 
-    local_file = os.path.abspath(
-        os.path.join(
-            save_root, path_names[-1] + (".tmp" if compressed else original_ext)
-        )
-    )
+    local_file = os.path.abspath(os.path.join(save_root, path_names[-1] + (".tmp" if compressed else original_ext)))
 
     wget.download(s3_url, out=local_file)
 

@@ -4,7 +4,7 @@ nq_test:
   _target_: dpr.data.retriever_data.CsvQASrc
   #file: data.retriever.qas.nq-test
   file: /private/home/scottyih/playground/bert-qa/data/nq-test.qa.csv
-  query_special_suffix: '?'
+  #query_special_suffix: '?'
 
 nq_train:
   _target_: dpr.data.retriever_data.CsvQASrc
@@ -26,6 +26,14 @@ trivia_train:
 trivia_dev:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.trivia-dev
+
+webq_test:
+  _target_: dpr.data.retriever_data.CsvQASrc
+  file: data.retriever.qas.webq-test
+
+curatedtrec_test:
+  _target_: dpr.data.retriever_data.CsvQASrc
+  file: data.retriever.qas.curatedtrec-test
 
 nq_audio_test:
   _target_: dpr.data.speech_data.WavTextQADataset

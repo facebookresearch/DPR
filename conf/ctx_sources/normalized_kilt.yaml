@@ -1,0 +1,7 @@
+# @package _group_
+
+kilt_wiki:
+  _target_: dpr.data.retriever_data.KiltCsvCtxSrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/chunks.tsv
+  mapping_file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/map_back_to_kilt.pkl
+  normalize: True

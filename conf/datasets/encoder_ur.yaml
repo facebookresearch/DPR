@@ -1,0 +1,303 @@
+# @package _group_
+
+nq_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+nq_train_adv:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/best_ur_results_processed/nq_train.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+hotpot_train_adv:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/best_ur_results_processed/hotpot_train.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+trivia_train_adv:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/best_ur_results_processed/trivia_train.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+quora_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/datasets/quora/retriever_train.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  encoder_type: question
+
+quora_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/datasets/quora/retriever_dev.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  encoder_type: question
+
+trec2020_passages_train:
+  _target_: dpr.data.biencoder_data.TRECDataset
+  data_dir: /checkpoint/vladk/datasets/TREC/
+  passages_filename: collection.tsv
+  queries_filename: queries.train.tsv
+  qrels_filename: qidpidtriples.train.full.2.tsv
+  shuffle_positives: True
+
+nq_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json
+  normalize: True
+  query_special_suffix: '?'
+
+trivia_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+trivia_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.json
+  normalize: True
+  query_special_suffix: '?'
+
+hotpot_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+
+hotpot_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.json
+  normalize: True
+  query_special_suffix: '?'
+
+zeroshot_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+
+zeroshot_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.json
+  normalize: True
+
+fever_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+
+fever_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-multikilt.json
+  normalize: True
+
+aidayago2_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+  special_token: '[START_ENT]'
+
+aidayago2_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-multikilt.json
+  normalize: True
+  special_token: '[START_ENT]'
+
+trex_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+
+trex_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-dev-multikilt.json
+  normalize: True
+
+wow_train:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-train-multikilt.json
+  normalize: True
+  shuffle_positives: True
+
+wow_dev:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-dev-multikilt.json
+  normalize: True
+
+
+# CC_NET dense results data
+
+nq_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/nq-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+nq_dev_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/nq-dev_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+trivia_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/trivia-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+trivia_dev_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/trivia-dev_dpr_input.json
+  normalize: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+hotpot_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/hotpot-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+hotpot_dev_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/hotpot-dev_dpr_input.json
+  normalize: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+zeroshot_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/zeroshot-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  exclude_gold: True
+
+zeroshot_dev_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/zeroshot-dev_dpr_input.json
+  normalize: True
+  exclude_gold: True
+
+trex1_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/trex-train1_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  exclude_gold: True
+
+trex2_train_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/trex-train2_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  exclude_gold: True
+
+trex_dev_ccnet:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/trex-dev_dpr_input.json
+  normalize: True
+  exclude_gold: True
+
+
+# CC NET BM25 results data
+
+nq_train_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/nq-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+nq_dev_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/nq-dev_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+trivia_train_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/trivia-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+trivia_dev_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/trivia-dev_dpr_input.json
+  normalize: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+hotpot_train_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/hotpot-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+hotpot_dev_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/hotpot-dev_dpr_input.json
+  normalize: True
+  query_special_suffix: '?'
+  exclude_gold: True
+
+zeroshot_train_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/zeroshot-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  exclude_gold: True
+
+zeroshot_dev_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/zeroshot-dev_dpr_input.json
+  normalize: True
+  exclude_gold: True
+
+trex_train_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/trex-train_dpr_input.json
+  normalize: True
+  shuffle_positives: True
+  exclude_gold: True
+
+trex_dev_ccnet_bm25:
+  _target_: dpr.data.biencoder_data.JsonQADataset
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-bm25/trex-dev_dpr_input.json
+  normalize: True
+  exclude_gold: True
+
+msmarco_train:
+  _target_: dpr.data.biencoder_data.JsonlQADataset
+  file: /private/home/barlaso/data/msmarco/preprocessed/train.jsonl

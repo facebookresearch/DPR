@@ -1,0 +1,122 @@
+# @package _group_
+
+nq_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/nq_dev-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/nq-dev-kilt.jsonl
+  query_special_suffix: '?'
+
+nq_train:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/nq_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/nq-train-kilt.jsonl
+  query_special_suffix: '?'
+
+nq_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/nq-test_without_answers-kilt.jsonl
+  query_special_suffix: '?'
+
+trivia_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/triviaqa-test_without_answers-kilt.jsonl
+  query_special_suffix: '?'
+
+trivia_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/trivia_dev-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/triviaqa-dev-kilt.jsonl
+  query_special_suffix: '?'
+
+trivia_train:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trivia_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/triviaqa-train-kilt.jsonl
+  query_special_suffix: '?'
+
+hotpot_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/hotpotqa-test_without_answers-kilt.jsonl
+  query_special_suffix: '?'
+
+hotpot_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/hotpot_dev-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/hotpotqa-dev-kilt.jsonl
+  query_special_suffix: '?'
+
+hotpot_train:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/hotpot_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/hotpotqa-train-kilt.jsonl
+  query_special_suffix: '?'
+
+zeroshot_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/structured_zeroshot-test_without_answers-kilt.jsonl
+
+zeroshot_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/zeroshot_dev-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/structured_zeroshot-dev-kilt.jsonl
+
+zeroshot_train:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/zeroshot_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/structured_zeroshot-train-kilt.jsonl
+
+fever_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-dev-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/fever-dev-kilt.jsonl
+
+fever_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/fever-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/fever-test_without_answers-kilt.jsonl
+
+aidayago2_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-dev-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/aidayago2-dev-kilt.jsonl
+  special_query_token: '[START_ENT]'
+
+aidayago2_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/aidayago2-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/aidayago2-test_without_answers-kilt.jsonl
+  special_query_token: '[START_ENT]'
+
+trex_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-dev-multikilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_dev-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-dev-kilt.jsonl
+
+trex_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-test_without_answers-kilt.jsonl
+
+trex_train:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+
+wow_dev:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-dev-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/wow-dev-kilt.jsonl
+
+wow_test:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/wow-test-multikilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/wow-test_without_answers-kilt.jsonl

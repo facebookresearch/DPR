@@ -38,6 +38,7 @@ from dpr.utils.data_utils import (
     ShardedDataIterator,
     Tensorizer,
     MultiSetDataIterator,
+    LocalShardedDataIterator,
 )
 from dpr.utils.dist_utils import all_gather_list
 from dpr.utils.model_utils import (
@@ -120,14 +121,10 @@ class BiEncoderTrainer(object):
             self.ds_cfg.train_datasets_names if is_train_set else self.ds_cfg.dev_datasets_names,
         )
 
-        # randomized data loading to avoid file system congestion
-        datasets_list = [ds for ds in hydra_datasets]
-        rnd = random.Random(rank)
-        rnd.shuffle(datasets_list)
-        [ds.load_data() for ds in datasets_list]
+        single_ds_iterator_cls = LocalShardedDataIterator if self.cfg.local_shards_dataloader else ShardedDataIterator
 
         sharded_iterators = [
-            ShardedDataIterator(
+            single_ds_iterator_cls(
                 ds,
                 shard_id=self.shard_id,
                 num_shards=self.distributed_factor,
@@ -480,7 +477,7 @@ class BiEncoderTrainer(object):
             )
 
             # get the token to be used for representation selection
-            from dpr.data.biencoder_data import DEFAULT_SELECTOR
+            from dpr.utils.data_utils import DEFAULT_SELECTOR
 
             selector = ds_cfg.selector if ds_cfg else DEFAULT_SELECTOR
 
@@ -605,17 +602,18 @@ class BiEncoderTrainer(object):
         model_to_load = get_model_obj(self.biencoder)
         logger.info("Loading saved model state ...")
 
-        # TODO: tmp - only load only ctx encoder state
-        # """
+        # TODO: tmp - load only ctx encoder state
+        """
         logger.info("!!! loading only ctx encoder state")
         prefix_len = len("ctx_model.")
         ctx_state = {
             key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith("ctx_model.")
         }
         model_to_load.ctx_model.load_state_dict(ctx_state, strict=False)
-        # """
-        # model_to_load.load_state(saved_state)
+        """
 
+        model_to_load.load_state(saved_state, strict=True)
+        logger.info("Saved state loaded")
         if not self.cfg.ignore_checkpoint_optimizer:
             if saved_state.optimizer_dict:
                 logger.info("Loading saved optimizer state ...")

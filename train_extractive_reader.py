@@ -57,9 +57,7 @@ from dpr.utils.model_utils import (
 logger = logging.getLogger()
 setup_logger(logger)
 
-ReaderQuestionPredictions = collections.namedtuple(
-    "ReaderQuestionPredictions", ["id", "predictions", "gold_answers"]
-)
+ReaderQuestionPredictions = collections.namedtuple("ReaderQuestionPredictions", ["id", "predictions", "gold_answers"])
 
 
 class ReaderTrainer(object):
@@ -74,25 +72,31 @@ class ReaderTrainer(object):
         model_file = get_model_file(self.cfg, self.cfg.checkpoint_file_name)
         saved_state = None
         if model_file:
-            logger.info('!! model_file = %s', model_file)
+            logger.info("!! model_file = %s", model_file)
             saved_state = load_states_from_checkpoint(model_file)
             set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
-        tensorizer, reader, optimizer = init_reader_components(
-            cfg.encoder.encoder_model_type, cfg
-        )
+        tensorizer, reader, optimizer = init_reader_components(cfg.encoder.encoder_model_type, cfg)
 
-         # TODO: tmp logic for speechQA
+        # TODO: tmp logic for speechQA
         # -----------------------------------------------------------
+        """
         new_tokens_prefix = "w2v"
         new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
         from dpr.models.hf_models import _add_special_tokens
+
+        _add_special_tokens(tensorizer.tokenizer, new_tokens)
+        """
+        new_tokens_prefix = "ct"
+        new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
+        from dpr.models.hf_models import _add_special_tokens
+
         _add_special_tokens(tensorizer.tokenizer, new_tokens)
 
         cp_state = torch.load(cfg.tmp_encoder_cp_name)
-        key_shift = len('bert.')
-        logger.info('Loading pre-trained reader weights from %s', cfg.tmp_encoder_cp_name)
-        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith('bert.')}
+        key_shift = len("bert.")
+        logger.info("Loading pre-trained reader weights from %s", cfg.tmp_encoder_cp_name)
+        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith("bert.")}
         reader.load_state_dict(cp_state, strict=False)
         # -----------------------------------------------------------
 
@@ -116,7 +120,6 @@ class ReaderTrainer(object):
         if saved_state:
             self._load_saved_state(saved_state)
 
-
     def get_data_iterator(
         self,
         path: str,
@@ -126,21 +129,15 @@ class ReaderTrainer(object):
         shuffle_seed: int = 0,
         offset: int = 0,
     ) -> ShardedDataIterator:
-
-        run_preprocessing = (
-            True
-            if self.distributed_factor == 1 or self.cfg.local_rank in [-1, 0]
-            else False
-        )
+        logger.info("!!! get daat it for files=%s", path)
+        run_preprocessing = True if self.distributed_factor == 1 or self.cfg.local_rank in [-1, 0] else False
 
         gold_passages_src = self.cfg.gold_passages_src
         if gold_passages_src:
             if not is_train:
                 gold_passages_src = self.cfg.gold_passages_src_dev
 
-            assert os.path.exists(
-                gold_passages_src
-            ), "Please specify valid gold_passages_src/gold_passages_src_dev"
+            assert os.path.exists(gold_passages_src), "Please specify valid gold_passages_src/gold_passages_src_dev"
 
         dataset = ExtractiveReaderDataset(
             path,
@@ -162,6 +159,7 @@ class ReaderTrainer(object):
             shuffle_seed=shuffle_seed,
             offset=offset,
         )
+        iterator.calculate_shards()
 
         # apply deserialization hook
         iterator.apply(lambda sample: sample.on_deserialize())
@@ -182,9 +180,7 @@ class ReaderTrainer(object):
         # num_train_epochs = cfg.train.num_train_epochs - self.start_epoch
 
         logger.info("Total iterations per epoch=%d", train_iterator.max_iterations)
-        updates_per_epoch = (
-            train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
-        )
+        updates_per_epoch = train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
 
         total_updates = updates_per_epoch * cfg.train.num_train_epochs
         logger.info(" Total updates=%d", total_updates)
@@ -211,14 +207,10 @@ class ReaderTrainer(object):
 
         for epoch in range(self.start_epoch, cfg.train.num_train_epochs):
             logger.info("***** Epoch %d *****", epoch)
-            global_step = self._train_epoch(
-                scheduler, epoch, eval_step, train_iterator, global_step
-            )
+            global_step = self._train_epoch(scheduler, epoch, eval_step, train_iterator, global_step)
 
         if cfg.local_rank in [-1, 0]:
-            logger.info(
-                "Training finished. Best validation checkpoint %s", self.best_cp_name
-            )
+            logger.info("Training finished. Best validation checkpoint %s", self.best_cp_name)
 
         return
 
@@ -241,9 +233,7 @@ class ReaderTrainer(object):
         logger.info("Validation ...")
         cfg = self.cfg
         self.reader.eval()
-        data_iterator = self.get_data_iterator(
-            cfg.dev_files, cfg.train.dev_batch_size, False, shuffle=False
-        )
+        data_iterator = self.get_data_iterator(cfg.dev_files, cfg.train.dev_batch_size, False, shuffle=False)
 
         log_result_step = cfg.train.log_batch_step
         all_results = []
@@ -286,16 +276,9 @@ class ReaderTrainer(object):
 
         for q_predictions in all_results:
             gold_answers = q_predictions.gold_answers
-            span_predictions = (
-                q_predictions.predictions
-            )  # {top docs threshold -> SpanPrediction()}
+            span_predictions = q_predictions.predictions  # {top docs threshold -> SpanPrediction()}
             for (n, span_prediction) in span_predictions.items():
-                em_hit = max(
-                    [
-                        exact_match_score(span_prediction.prediction_text, ga)
-                        for ga in gold_answers
-                    ]
-                )
+                em_hit = max([exact_match_score(span_prediction.prediction_text, ga) for ga in gold_answers])
                 ems[n].append(em_hit)
         em = 0
         for n in sorted(ems.keys()):
@@ -324,9 +307,7 @@ class ReaderTrainer(object):
         self.reader.train()
         epoch_batches = train_data_iterator.max_iterations
 
-        for i, samples_batch in enumerate(
-            train_data_iterator.iterate_ds_data(epoch=epoch)
-        ):
+        for i, samples_batch in enumerate(train_data_iterator.iterate_ds_data(epoch=epoch)):
 
             data_iteration = train_data_iterator.get_iteration()
 
@@ -360,15 +341,11 @@ class ReaderTrainer(object):
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
                 if max_grad_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        amp.master_params(self.optimizer), max_grad_norm
-                    )
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), max_grad_norm)
             else:
                 loss.backward()
                 if max_grad_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.reader.parameters(), max_grad_norm
-                    )
+                    torch.nn.utils.clip_grad_norm_(self.reader.parameters(), max_grad_norm)
 
             if (i + 1) % cfg.train.gradient_accumulation_steps == 0:
                 self.optimizer.step()
@@ -404,9 +381,7 @@ class ReaderTrainer(object):
                     data_iteration,
                     epoch_batches,
                 )
-                self.validate_and_save(
-                    epoch, train_data_iterator.get_iteration(), scheduler
-                )
+                self.validate_and_save(epoch, train_data_iterator.get_iteration(), scheduler)
                 self.reader.train()
 
         epoch_loss = (epoch_loss / epoch_batches) if epoch_batches > 0 else 0
@@ -418,10 +393,7 @@ class ReaderTrainer(object):
         model_to_save = get_model_obj(self.reader)
         cp = os.path.join(
             cfg.output_dir,
-            cfg.checkpoint_file_name
-            + "."
-            + str(epoch)
-            + ("." + str(offset) if offset > 0 else ""),
+            cfg.checkpoint_file_name + "." + str(epoch) + ("." + str(offset) if offset > 0 else ""),
         )
 
         meta_params = get_encoder_params_state_from_cfg(cfg)
@@ -483,9 +455,7 @@ class ReaderTrainer(object):
             nbest = []
             for p in range(passages_per_question):
                 passage_idx = idxs[q, p].item()
-                if (
-                    passage_idx >= non_empty_passages_num
-                ):  # empty passage selected, skip
+                if passage_idx >= non_empty_passages_num:  # empty passage selected, skip
                     continue
                 reader_passage = sample.passages[passage_idx]
                 sequence_ids = reader_passage.sequence_ids
@@ -493,12 +463,8 @@ class ReaderTrainer(object):
                 # assuming question & title information is at the beginning of the sequence
                 passage_offset = reader_passage.passage_offset
 
-                p_start_logits = start_logits[q, passage_idx].tolist()[
-                    passage_offset:sequence_len
-                ]
-                p_end_logits = end_logits[q, passage_idx].tolist()[
-                    passage_offset:sequence_len
-                ]
+                p_start_logits = start_logits[q, passage_idx].tolist()[passage_offset:sequence_len]
+                p_end_logits = end_logits[q, passage_idx].tolist()[passage_offset:sequence_len]
 
                 ctx_ids = sequence_ids.tolist()[passage_offset:]
                 best_spans = get_best_spans(
@@ -523,14 +489,10 @@ class ReaderTrainer(object):
                 predictions = passage_rank_matches
             else:
                 if len(nbest) == 0:
-                    predictions = {
-                        passages_per_question: SpanPrediction("", -1, -1, -1, "")
-                    }
+                    predictions = {passages_per_question: SpanPrediction("", -1, -1, -1, "")}
                 else:
                     predictions = {passages_per_question: nbest[0]}
-            batch_results.append(
-                ReaderQuestionPredictions(sample.question, predictions, sample.answers)
-            )
+            batch_results.append(ReaderQuestionPredictions(sample.question, predictions, sample.answers))
         return batch_results
 
     def _calc_loss(self, input: ReaderBatch) -> torch.Tensor:
@@ -552,9 +514,7 @@ class ReaderTrainer(object):
         else:
             # TODO: remove?
             with torch.no_grad():
-                start_logits, end_logits, rank_logits = self.reader(
-                    input.input_ids, attn_mask, input.token_type_ids
-                )
+                start_logits, end_logits, rank_logits = self.reader(input.input_ids, attn_mask, input.token_type_ids)
 
             loss = compute_loss(
                 input.start_positions,
@@ -573,9 +533,7 @@ class ReaderTrainer(object):
 
         return loss
 
-    def _save_predictions(
-        self, out_file: str, prediction_results: List[ReaderQuestionPredictions]
-    ):
+    def _save_predictions(self, out_file: str, prediction_results: List[ReaderQuestionPredictions]):
         logger.info("Saving prediction results to  %s", out_file)
         with open(out_file, "w", encoding="utf-8") as output:
             save_results = []
@@ -592,9 +550,7 @@ class ReaderTrainer(object):
                                     "score": span_pred.span_score,
                                     "relevance_score": span_pred.relevance_score,
                                     "passage_idx": span_pred.passage_index,
-                                    "passage": self.tensorizer.to_string(
-                                        span_pred.passage_token_ids
-                                    ),
+                                    "passage": self.tensorizer.to_string(span_pred.passage_token_ids),
                                 },
                             }
                             for top_k, span_pred in r.predictions.items()
@@ -625,9 +581,7 @@ def main(cfg: DictConfig):
         logger.info("No train files are specified. Run validation.")
         trainer.validate()
     else:
-        logger.warning(
-            "Neither train_file or (model_file & dev_file) parameters are specified. Nothing to do."
-        )
+        logger.warning("Neither train_file or (model_file & dev_file) parameters are specified. Nothing to do.")
 
 
 if __name__ == "__main__":

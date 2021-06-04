@@ -1,0 +1,21 @@
+# downloadable resources configuration
+
+nq_license_files:
+    - https://dl.fbaipublicfiles.com/dpr/nq_license/LICENSE
+    - https://dl.fbaipublicfiles.com/dpr/nq_license/README
+
+
+resources:
+    data.wikipedia_split.psgs_w100:
+        s3_url: https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
+        original_ext: .tsv
+        compressed: True
+        desc: 'Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)'
+
+    data.retriever.nq-dev:
+        s3_url: "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz"
+        original_ext: ".json"
+        compressed: True,
+        desc: "NQ dev subset with passages pools for the Retriever train time validation"
+        license_files: nq_license_files,
+

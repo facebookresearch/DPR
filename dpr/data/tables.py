@@ -8,7 +8,7 @@ import jsonlines
 import spacy as spacy
 from typing import List, Dict
 
-from data.qa_validation import regex_match
+# from dpr.data.qa_validation import regex_match
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -199,7 +199,7 @@ def read_nq_tables_jsonl(path: str, out_file: str = None) -> Dict[str, Table]:
                 continue
 
             mask = jline["html_mask"]
-            #_page_url = jline["doc_url"]
+            # _page_url = jline["doc_url"]
             title = jline["title"]
             p = NQTableParser(tokens, mask, title)
             tables = p.parse()
@@ -210,13 +210,7 @@ def read_nq_tables_jsonl(path: str, out_file: str = None) -> Dict[str, Table]:
                 total_tables += 1
 
                 # calc amount of non empty rows
-                non_empty_rows = sum(
-                    [
-                        1
-                        for r in t.body
-                        if r.cells and any([True for c in r.cells if c.value_tokens])
-                    ]
-                )
+                non_empty_rows = sum([1 for r in t.body if r.cells and any([True for c in r.cells if c.value_tokens])])
 
                 if non_empty_rows <= 1:
                     single_row_tables += 1
@@ -379,9 +373,7 @@ def convert_search_res_to_dpr_and_eval(
                         answer_locations.append((row_idx, cell_idx))
 
                 # get string representation to find answer
-                if (len(question_positives) >= 10 and len(question_hns) >= 10) or (
-                    len(question_hns) >= 30
-                ):
+                if (len(question_positives) >= 10 and len(question_hns) >= 10) or (len(question_hns) >= 30):
                     break
 
                 # table_str = get_table_string_for_answer_check(table)
@@ -492,9 +484,7 @@ def convert_search_res_to_dpr_and_eval(
 
     logger.info("out_results size %s", len(out_results))
 
-    with jsonlines.open(
-        out_file, mode="w"
-    ) as writer:  # encoding="utf-8", .encode('utf-8')
+    with jsonlines.open(out_file, mode="w") as writer:  # encoding="utf-8", .encode('utf-8')
         for r in out_results:
             writer.write(r)
 
@@ -531,9 +521,7 @@ def convert_long_ans_to_dpr(nq_table_file, out_file):
 
     logger.info("out_results size %s", len(out_results))
 
-    with jsonlines.open(
-        out_file, mode="w"
-    ) as writer:  # encoding="utf-8", .encode('utf-8')
+    with jsonlines.open(out_file, mode="w") as writer:  # encoding="utf-8", .encode('utf-8')
         for r in out_results:
             writer.write(r)
 
@@ -623,3 +611,13 @@ def convert_train_jsonl_to_ctxmatch(path: str, out_file: str):
             for i, item in enumerate(chunk):
                 writer.write({"id": s + i, "question": item[0], "context": item[1]})
         shard += 1
+
+
+# TODO: move to utils
+def regex_match(text, pattern):
+    """Test if a regex pattern is contained within a text."""
+    try:
+        pattern = re.compile(pattern, flags=re.IGNORECASE + re.UNICODE + re.MULTILINE)
+    except BaseException:
+        return False
+    return pattern.search(text) is not None

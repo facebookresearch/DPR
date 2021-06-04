@@ -74,6 +74,7 @@ class BiEncoder(nn.Module):
         self.ctx_model = ctx_model
         self.fix_q_encoder = fix_q_encoder
         self.fix_ctx_encoder = fix_ctx_encoder
+        logger.info("!!! fix_ctx_encoder=%s", fix_ctx_encoder)
 
     @staticmethod
     def get_representation(
@@ -121,11 +122,7 @@ class BiEncoder(nn.Module):
         encoder_type: str = None,
         representation_token_pos=0,
     ) -> Tuple[T, T]:
-        q_encoder = (
-            self.question_model
-            if encoder_type is None or encoder_type == "question"
-            else self.ctx_model
-        )
+        q_encoder = self.question_model if encoder_type is None or encoder_type == "question" else self.ctx_model
         _q_seq, q_pooled_out, _q_hidden = self.get_representation(
             q_encoder,
             question_ids,
@@ -135,11 +132,7 @@ class BiEncoder(nn.Module):
             representation_token_pos=representation_token_pos,
         )
 
-        ctx_encoder = (
-            self.ctx_model
-            if encoder_type is None or encoder_type == "ctx"
-            else self.question_model
-        )
+        ctx_encoder = self.ctx_model if encoder_type is None or encoder_type == "ctx" else self.question_model
         _ctx_seq, ctx_pooled_out, _ctx_hidden = self.get_representation(
             ctx_encoder, context_ids, ctx_segments, ctx_attn_mask, self.fix_ctx_encoder
         )
@@ -206,9 +199,7 @@ class BiEncoder(nn.Module):
             current_ctxs_len = len(ctx_tensors)
 
             sample_ctxs_tensors = [
-                tensorizer.text_to_tensor(
-                    ctx.text, title=ctx.title if (insert_title and ctx.title) else None
-                )
+                tensorizer.text_to_tensor(ctx.text, title=ctx.title if (insert_title and ctx.title) else None)
                 for ctx in all_ctxs
             ]
 
@@ -227,14 +218,10 @@ class BiEncoder(nn.Module):
             if query_token:
                 # TODO: tmp workaround for EL, remove or revise
                 if query_token == "[START_ENT]":
-                    query_span = _select_span_with_token(
-                        question, tensorizer, token_str=query_token
-                    )
+                    query_span = _select_span_with_token(question, tensorizer, token_str=query_token)
                     question_tensors.append(query_span)
                 else:
-                    question_tensors.append(
-                        tensorizer.text_to_tensor(" ".join([query_token, question]))
-                    )
+                    question_tensors.append(tensorizer.text_to_tensor(" ".join([query_token, question])))
             else:
                 question_tensors.append(tensorizer.text_to_tensor(question))
 
@@ -295,9 +282,7 @@ class BiEncoderNllLoss(object):
         )
 
         max_score, max_idxs = torch.max(softmax_scores, 1)
-        correct_predictions_count = (
-            max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)
-        ).sum()
+        correct_predictions_count = (max_idxs == torch.tensor(positive_idx_per_question).to(max_idxs.device)).sum()
 
         if loss_scale:
             loss.mul_(loss_scale)
@@ -314,9 +299,7 @@ class BiEncoderNllLoss(object):
         return dot_product_scores
 
 
-def _select_span_with_token(
-    text: str, tensorizer: Tensorizer, token_str: str = "[START_ENT]"
-) -> T:
+def _select_span_with_token(text: str, tensorizer: Tensorizer, token_str: str = "[START_ENT]") -> T:
     id = tensorizer.get_token_id(token_str)
     query_tensor = tensorizer.text_to_tensor(text)
 
@@ -338,19 +321,13 @@ def _select_span_with_token(
 
             from dpr.models.reader import _pad_to_len
 
-            query_tensor = _pad_to_len(
-                query_tensor, tensorizer.get_pad_id(), tensorizer.max_length
-            )
+            query_tensor = _pad_to_len(query_tensor, tensorizer.get_pad_id(), tensorizer.max_length)
             query_tensor[-1] = tensorizer.tokenizer.sep_token_id
             # logger.info('aligned query_tensor %s', query_tensor)
 
             assert id in query_tensor, "query_tensor={}".format(query_tensor)
             return query_tensor
         else:
-            raise RuntimeError(
-                "[START_ENT] toke not found for Entity Linking sample query={}".format(
-                    text
-                )
-            )
+            raise RuntimeError("[START_ENT] toke not found for Entity Linking sample query={}".format(text))
     else:
         return query_tensor

@@ -10,6 +10,34 @@ cc_news:
   _target_: dpr.data.retriever_data.CsvCtxSrc
   file: /checkpoint/piktus/cc-news/cc_news_processed.tsv
 
+cc_net0:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_0.tsv
+
+cc_net1:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_1.tsv
+
+cc_net2:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_2.tsv
+
+cc_net3:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_3.tsv
+
+cc_net4:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_4.tsv
+
+cc_net5:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/piktus/sphere/cc_net/2019-35/chunks/cc_net_processed_5.tsv
+
 cc_news_small:
   _target_: dpr.data.retriever_data.CsvCtxSrc
   file: /checkpoint/piktus/cc-news/cc_news_processed_small.tsv
+
+cc_net_eval:
+  _target_: dpr.data.retriever_data.CsvCtxSrc
+  file: /checkpoint/vladk/biencoder/cc-net2019-results-urbase/eval_passages.tsv
