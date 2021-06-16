@@ -531,7 +531,7 @@ def main():
     else:
         print("Please specify resource value. Possible options are:")
         for k, v in RESOURCES_MAP.items():
-            print("Resource key=%s  :  %s", k, v["desc"])
+            print("Resource key=%s  :  %s" % (k, v["desc"]))
 
 
 if __name__ == "__main__":
