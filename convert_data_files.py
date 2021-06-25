@@ -96,11 +96,11 @@ def convert_retriever_data_to_retriever_input(
     out,
     gold_file=None,
 ):
-    # max_positives = 3
-    # max_negatives = 30
+    max_positives = 5
+    max_negatives = 50
 
-    max_positives = 2
-    max_negatives = 10
+    # max_positives = 2
+    # max_negatives = 10
 
     gold_data = []
     if gold_file:
