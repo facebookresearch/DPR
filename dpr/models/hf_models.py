@@ -363,7 +363,7 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
         attention_mask: T,
         representation_token_pos=0,
     ) -> Tuple[T, ...]:
-
+        # logger.info("!!! input_ids %s %s", input_ids.size(), input_ids.device)
         wav2vec_out = super().forward(input_ids, output_hidden_states=True)  # attention_mask=attention_mask
         wav2vec_out = (
             wav2vec_out.last_hidden_state

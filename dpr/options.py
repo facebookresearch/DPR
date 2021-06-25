@@ -51,11 +51,12 @@ def set_cfg_params_from_state(state: dict, cfg: DictConfig):
 
             setattr(cfg.encoder, k, v)
     else:  # 'old' checkpoints backward compatibility support
-        cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
-        cfg.encoder.encoder_model_type = state["encoder_model_type"]
-        cfg.encoder.pretrained_file = state["pretrained_file"]
-        cfg.encoder.projection_dim = state["projection_dim"]
-        cfg.encoder.sequence_length = state["sequence_length"]
+        return
+        # cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
+        # cfg.encoder.encoder_model_type = state["encoder_model_type"]
+        # cfg.encoder.pretrained_file = state["pretrained_file"]
+        # cfg.encoder.projection_dim = state["projection_dim"]
+        # cfg.encoder.sequence_length = state["sequence_length"]
 
 
 def get_encoder_params_state_from_cfg(cfg: DictConfig):

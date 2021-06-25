@@ -381,6 +381,13 @@ RESOURCES_MAP = {
         "compressed": False,
         "desc": "TFIDF index when only Wikipedia pages seen during training are considered",
     },
+    # Universal retriever project data
+    "data.wikipedia_split.psgs_w100": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz",
+        "original_ext": ".tsv",
+        "compressed": True,
+        "desc": "Entire wikipedia passages set obtain by splitting all pages into 100-word segments (no overlap)",
+    },
 }
 
 

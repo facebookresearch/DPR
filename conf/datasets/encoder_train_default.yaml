@@ -74,11 +74,11 @@ nq_speech_quantized_dev:
   km_file: /checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/dev_deduped_0_1.km
   max_audio_len: 176
 
-paq_4m_speech_mixed_train:
+paq_1m_speech_mixed_train:
   _target_: dpr.data.speech_data.WavPAQTextDataset
   jsonl_file: /private/home/barlaso/data/paq/PAQ.dpr.train.jsonl
   manifest_txt_file: /checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt
-  wav_root_dir: /checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions_audio/denoised/
+  wav_root_dir: /checkpoint/vladk/speechqa/data/paq/train/denoised_16k/
   normalize_audio: False
-  total_data_size: 4000000
+  total_data_size: 1000000
 

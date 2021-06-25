@@ -86,15 +86,23 @@ class CsvQASrc(QASrc):
         selector: DictConfig = None,
         special_query_token: str = None,
         query_special_suffix: str = None,
+        data_range_start: int = -1,
+        data_size: int = -1,
     ):
         super().__init__(file, selector, special_query_token, query_special_suffix)
         self.question_col = question_col
         self.answers_col = answers_col
         self.id_col = id_col
+        self.data_range_start = data_range_start
+        self.data_size = data_size
 
     def load_data(self):
         super().load_data()
         data = []
+        start = self.data_range_start
+        # size = self.data_size
+        samples_count = 0
+        # TODO: optimize
         with open(self.file) as ifile:
             reader = csv.reader(ifile, delimiter="\t")
             for row in reader:
@@ -103,9 +111,17 @@ class CsvQASrc(QASrc):
                 id = None
                 if self.id_col >= 0:
                     id = row[self.id_col]
+                samples_count += 1
+                # if start !=-1 and samples_count<=start:
+                #    continue
                 data.append(QASample(self._process_question(question), id, answers))
-        # self.data = data[1000000:]
-        self.data = data
+
+        if start != -1:
+            end = start + self.data_size if self.data_size != -1 else -1
+            logger.info("Selecting dataset range [%s,%s]", start, end)
+            self.data = data[start:end] if end != -1 else data[start:]
+        else:
+            self.data = data
 
 
 class JsonlQASrc(QASrc):
@@ -149,6 +165,8 @@ class KiltCsvQASrc(CsvQASrc):
         selector: DictConfig = None,
         special_query_token: str = None,
         query_special_suffix: str = None,
+        data_range_start: int = -1,
+        data_size: int = -1,
     ):
         super().__init__(
             file,
@@ -158,6 +176,8 @@ class KiltCsvQASrc(CsvQASrc):
             selector,
             special_query_token,
             query_special_suffix,
+            data_range_start,
+            data_size,
         )
         self.kilt_gold_file = kilt_gold_file
 
@@ -249,13 +269,12 @@ class CsvCtxSrc(RetrieverData):
 
     def load_data_to(self, ctxs: Dict[object, BiEncoderPassage]):
         super().load_data()
-        logger.info("!!! reading file %s", self.file)
+        logger.info("Reading file %s", self.file)
         with open(self.file) as ifile:
-            # reader = csv.reader(ifile, delimiter="\t")
-            # for row in reader:
-            for row in ifile:
-                row = row.strip().split("\t")
-
+            reader = csv.reader(ifile, delimiter="\t")
+            for row in reader:
+                # for row in ifile:
+                # row = row.strip().split("\t")
                 if row[self.id_col] == "id":
                     continue
                 if self.id_prefix:
@@ -297,7 +316,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
 
         with jsonlines.open(kilt_out_file, mode="w") as writer:
             for dpr_entry, kilt_gold_entry in zip(dpr_output, kilt_gold_file):
-                assert dpr_entry["question"] == kilt_gold_entry["input"]
+                # assert dpr_entry["question"] == kilt_gold_entry["input"]
                 provenance = []
                 for ctx in dpr_entry["ctxs"]:
                     wikipedia_id, end_paragraph_id = mapping[int(ctx["id"])]
@@ -309,7 +328,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
                     )
                 kilt_entry = {
                     "id": kilt_gold_entry["id"],
-                    "input": dpr_entry["question"],
+                    "input": kilt_gold_entry["input"],  # dpr_entry["question"],
                     "output": [{"provenance": provenance}],
                 }
                 writer.write(kilt_entry)

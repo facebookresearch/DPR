@@ -31,6 +31,9 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
     if cfg.encoder.q_encoder_type == "hf-quantized":
         biencoder = BiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
     else:
+        # del question_encoder.masked_spec_embed
+        logger.info("!!! question_encoder state %s", question_encoder.state_dict().keys())
+
         biencoder = MixedBiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
 
     if not hasattr(cfg, "train"):  # eval mode
@@ -69,8 +72,9 @@ def get_query_encoder(cfg):
             cfg.encoder.q_output_layer,
         )
     elif cfg.encoder.q_encoder_type == "hf-quantized":
-        assert cfg.encoder.q_encoder_cp_file, 'q_encoder_cp_file should be set to point to quantization pre-trained ' \
-                                              'checkpoint'
+        assert cfg.encoder.q_encoder_cp_file, (
+            "q_encoder_cp_file should be set to point to quantization pre-trained " "checkpoint"
+        )
         query_encoder = HFBertEncoder.init_encoder(
             cfg.encoder.q_encoder_model_cfg,
             projection_dim=cfg.encoder.q_projection_dim,
@@ -78,9 +82,9 @@ def get_query_encoder(cfg):
             pretrained=True,
         )
         cp_state = torch.load(cfg.encoder.q_encoder_cp_file)
-        key_shift = len('bert.')
-        logger.info('Loading pre-trained q-encoder weights from %s', cfg.encoder.q_encoder_cp_file)
-        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith('bert.')}
+        key_shift = len("bert.")
+        logger.info("Loading pre-trained q-encoder weights from %s", cfg.encoder.q_encoder_cp_file)
+        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith("bert.")}
         query_encoder.load_state_dict(cp_state, strict=False)
 
     elif cfg.encoder.q_encoder_cp_file:  # Fairseq based
@@ -130,6 +134,7 @@ def get_ctx_encoder(cfg) -> Tuple[torch.nn.Module, Tensorizer]:
             new_tokens_prefix = "w2v"
             new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
             from dpr.models.hf_models import _add_special_tokens
+
             _add_special_tokens(tensorizer.tokenizer, new_tokens)
             # ----------------------------------------------------------------------------
 
@@ -151,16 +156,16 @@ def get_ctx_encoder(cfg) -> Tuple[torch.nn.Module, Tensorizer]:
 # TODO reduce code copy-paste
 class MixedBiEncoder(BiEncoder):
     def create_biencoder_input(
-            self,
-            samples: List[BiEncoderMixedSample],
-            tensorizer: Tensorizer,
-            insert_title: bool,
-            num_hard_negatives: int = 0,
-            num_other_negatives: int = 0,
-            shuffle: bool = True,
-            shuffle_positives: bool = False,
-            hard_neg_fallback: bool = True,
-            query_token: str = None,
+        self,
+        samples: List[BiEncoderMixedSample],
+        tensorizer: Tensorizer,
+        insert_title: bool,
+        num_hard_negatives: int = 0,
+        num_other_negatives: int = 0,
+        shuffle: bool = True,
+        shuffle_positives: bool = False,
+        hard_neg_fallback: bool = True,
+        query_token: str = None,
     ) -> BiEncoderBatch:
         """
         Creates a batch of the biencoder training tuple.
@@ -222,9 +227,9 @@ class MixedBiEncoder(BiEncoder):
                 [
                     i
                     for i in range(
-                    current_ctxs_len + hard_negatives_start_idx,
-                    current_ctxs_len + hard_negatives_end_idx,
-                )
+                        current_ctxs_len + hard_negatives_start_idx,
+                        current_ctxs_len + hard_negatives_end_idx,
+                    )
                 ]
             )
             question_tensors.append(question_tensor)

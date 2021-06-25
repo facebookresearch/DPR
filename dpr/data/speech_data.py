@@ -132,27 +132,37 @@ class WavPAQTextDataset(JsonlQADataset):
         self.manifest_txt_file = manifest_txt_file
         self.audio_file_prefix = audio_file_prefix
         self.normalize_audio = normalize_audio
-        self.id_to_audio_file_map = None
+        self.q_to_audio_file_map = None
         self.max_features_sz = max_features_sz
         self.wav_root_dir = wav_root_dir
         # tmp
         self.cut_samples = 0
 
     def load_data(self, start_pos: int = -1, end_pos: int = -1):
-        self.id_to_audio_file_map = _get_id_to_audio_file_map_paq(
-            self.wav_root_dir, self.audio_file_prefix, self.manifest_txt_file, end_pos=self.total_data_size
-        )
         super().load_data(start_pos=start_pos, end_pos=end_pos)
-        logger.info("id_to_audio_file_map  size: %d", len(self.id_to_audio_file_map))
+        # make q->wav file mapping
+        questions = set()
+        for json_sample in self.data:
+            q = json_sample["question"]
+            questions.add(q)
+        logger.info("dataset questions num %d", len(questions))
+        self.q_to_audio_file_map = _get_id_to_audio_file_map_paq(
+            questions,
+            self.wav_root_dir,
+            self.audio_file_prefix,
+            self.manifest_txt_file,
+        )
+        logger.info("q_to_audio_file_map %d", len(self.q_to_audio_file_map))
 
     def __getitem__(self, index) -> Optional[BiEncoderMixedSample]:
         json_sample = self.data[index]
         r = BiEncoderMixedSample()
-        sample_id = index
-        if sample_id not in self.id_to_audio_file_map:
-            logger.warning("!!! sample_id=%s not in audion files dict ", sample_id)
+        # sample_id = index
+        q = json_sample["question"]
+        if q not in self.q_to_audio_file_map:
+            logger.warning("!!! sample with question=%s not in audio files dict ", q)
             return None
-        audio_file = self.id_to_audio_file_map[sample_id]
+        audio_file = self.q_to_audio_file_map[q]
 
         query_tensor = _get_audio_feats(audio_file, self.normalize_audio)
 
@@ -388,22 +398,26 @@ def _get_id_to_audio_file_map(audio_file_prefix: str, wav_tsv_file: str, delimit
 
 
 def _get_id_to_audio_file_map_paq(
-    root: str, audio_file_prefix: str, wav_tsv_file: str, delimiter: str = "|", start_pos: int = -1, end_pos: int = -1
+    questions: set,
+    root: str,
+    audio_file_prefix: str,
+    wav_tsv_file: str,
+    delimiter: str = "|",
 ):
-    id_to_file_map = {}
+    q_to_file_map = {}
     with open(wav_tsv_file, "r") as fp:  # read tsv file
         lines = fp.read().split("\n")
         for i, line in enumerate(lines):
             if len(line) == 0:
                 continue
-            if end_pos > 0 and i > end_pos:
-                break
-            id = line.split(delimiter)[0]
+            sample = line.split(delimiter)
+            q = sample[1]
+            if q not in questions:
+                continue
+            id = sample[0]
             id_int = int(id)
             file_path = os.path.join(root, audio_file_prefix + id + ".wav")
             if not os.path.isfile(file_path):
                 logger.warning("missing file audio %s", file_path)
-            id_to_file_map[id_int] = file_path
-
-    logger.warning("!!! id_to_file_map 0 %s", id_to_file_map[0])
-    return id_to_file_map
+            q_to_file_map[q] = file_path
+    return q_to_file_map

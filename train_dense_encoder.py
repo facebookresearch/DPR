@@ -506,6 +506,7 @@ class BiEncoderTrainer(object):
                 if cfg.train.max_grad_norm > 0:
                     torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), cfg.train.max_grad_norm)
             else:
+                # logger.info("!! loss %s %s", loss, loss.device)
                 loss.backward()
 
                 # TODO: tmp debug code
@@ -603,13 +604,15 @@ class BiEncoderTrainer(object):
         logger.info("Loading saved model state ...")
 
         # TODO: tmp - load only ctx encoder state
+
+        # logger.info("!!! loading only ctx encoder state")
         """
-        logger.info("!!! loading only ctx encoder state")
         prefix_len = len("ctx_model.")
         ctx_state = {
             key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith("ctx_model.")
         }
         model_to_load.ctx_model.load_state_dict(ctx_state, strict=False)
+        return
         """
 
         model_to_load.load_state(saved_state, strict=True)
@@ -683,6 +686,8 @@ def _calc_loss(
         positive_idx_per_question = local_positive_idxs
         hard_negatives_per_question = local_hard_negatives_idxs
 
+    # logger.info("!!! global_q_vector %s rank=%s", global_q_vector.device, cfg.local_rank)
+    # logger.info("!!! global_q_vector %s rank=%s", global_q_vector.device, cfg.local_rank)
     loss, is_correct = loss_function.calc(
         global_q_vector,
         global_ctxs_vector,

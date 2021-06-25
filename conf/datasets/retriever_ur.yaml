@@ -42,14 +42,12 @@ hotpot_test:
   _target_: dpr.data.retriever_data.KiltCsvQASrc
   file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-test-multikilt.tsv
   kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/hotpotqa-test_without_answers-kilt.jsonl
-  query_special_suffix: '?'
 
 hotpot_dev:
   _target_: dpr.data.retriever_data.KiltCsvQASrc
   #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.tsv
   file: /checkpoint/vladk/dpr_open_source/ur/hotpot_dev-kilt.tsv
   kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/hotpotqa-dev-kilt.jsonl
-  query_special_suffix: '?'
 
 hotpot_train:
   _target_: dpr.data.retriever_data.KiltCsvQASrc
@@ -110,6 +108,48 @@ trex_train:
   _target_: dpr.data.retriever_data.KiltCsvQASrc
   file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
   kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+
+trex_train1:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 0
+  data_size: 400000
+
+trex_train2:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 400000
+  data_size: 400000
+
+trex_train3:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 800000
+  data_size: 400000
+
+trex_train4:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 1200000
+  data_size: 400000
+
+trex_train5:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 1600000
+  data_size: 400000
+
+trex_train6:
+  _target_: dpr.data.retriever_data.KiltCsvQASrc
+  file: /checkpoint/vladk/dpr_open_source/ur/trex_train-kilt.tsv
+  kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-train-kilt.jsonl
+  data_range_start: 2000000
+  data_size: 400000
 
 wow_dev:
   _target_: dpr.data.retriever_data.KiltCsvQASrc

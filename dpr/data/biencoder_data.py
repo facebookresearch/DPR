@@ -169,6 +169,7 @@ class JsonlQADataset(JsonQADataset):
                     if global_sample_id >= end_pos:
                         break
                     global_sample_id += 1
+        logger.info("Jsonl loaded data size %d ", len(self.data))
 
 
 def normalize_passage(ctx_text: str):

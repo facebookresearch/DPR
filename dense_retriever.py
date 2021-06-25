@@ -77,10 +77,11 @@ def generate_question_vectors(
             """
             max_vector_len = max(q_t.size(1) for q_t in batch_tensors)
             min_vector_len = min(q_t.size(1) for q_t in batch_tensors)
-
+            
             if max_vector_len != min_vector_len:
                 # TODO: _pad_to_len move to utils
                 from dpr.models.reader import _pad_to_len
+
                 batch_tensors = [_pad_to_len(q.squeeze(0), 0, max_vector_len) for q in batch_tensors]
             """
 
@@ -307,7 +308,7 @@ def validate(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
-    logger.info("!!! passages %s", len(passages))
+    logger.info("validating passages. size=%d", len(passages))
     match_stats = calculate_matches(passages, answers, result_ctx_ids, workers_num, match_type)
     top_k_hits = match_stats.top_k_hits
 
@@ -409,7 +410,7 @@ def save_results_from_meta(
                     "id": docs[c][0],
                     "title": zlib.decompress(docs[c][2]).decode() if rpc_meta_compressed else docs[c][2],
                     "text": zlib.decompress(docs[c][1]).decode() if rpc_meta_compressed else docs[c][1],
-                    # "is_wiki": docs[c][3],
+                    "is_wiki": docs[c][3],
                     "score": scores[c],
                     "has_answer": hits[c],
                 }
