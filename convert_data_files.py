@@ -96,11 +96,11 @@ def convert_retriever_data_to_retriever_input(
     out,
     gold_file=None,
 ):
-    max_positives = 5
-    max_negatives = 50
+    # max_positives = 3
+    # max_negatives = 30
 
-    # max_positives = 2
-    # max_negatives = 10
+    max_positives = 2
+    max_negatives = 10
 
     gold_data = []
     if gold_file:
@@ -361,6 +361,15 @@ def update_is_wiki_in_meta():
 
 def main():
     root = "/checkpoint/vladk/biencoder/val_ur_ccnet2_sp_ccnet_finetune_paq_all_lr2e5_40e/"
+
+    for i in range(4, 7):
+        dense_eval_results_to_dpr_train_files(
+            f"{root}/trex_train{i}.json",
+            "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-train-multikilt.json",
+            f"{root}/trex_train{i}_dpr_input.json",
+            is_slot_task=True,
+        )
+
     """
     for i in range(1, 7):
         dense_eval_results_to_dpr_train_files(
@@ -369,40 +378,34 @@ def main():
             f"{root}/trex_train{i}_dpr_input.json",
             is_slot_task=True,
         )
-    """
-
+        
     dense_eval_results_to_dpr_train_files(
         f"{root}/zeroshot_train.json",
         "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-train-multikilt.json",
         f"{root}/zeroshot_train_dpr_input.json",
         is_slot_task=True,
     )
-
-    """
+    
     dense_eval_results_to_dpr_train_files(
-        "/checkpoint/vladk/biencoder/val_ur_ccnet2_sp_ccnet_finetune_paq_all_lr2e5_40e/zeroshot_dev.json",
-        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/zeroshot-dev-multikilt.json",
-        None,
-        # is_slot_task=True,
+        f"{root}/nq_train.json",
+        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-train-multikilt.json",
+        f"{root}/nq_train_dpr_input.json",
+        is_slot_task=False,
     )
-
+    
     dense_eval_results_to_dpr_train_files(
-        "/checkpoint/vladk/biencoder/val_ur_ccnet2_sp_ccnet_finetune_paq_all_lr2e5_40e/nq_dev.json",
-        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/nq-dev-multikilt.json",
-        None,
+        f"{root}/trivia_train.json",
+        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-train-multikilt.json",
+        f"{root}/trivia_train_dpr_input.json",
+        is_slot_task=False,
     )
-
     dense_eval_results_to_dpr_train_files(
-        "/checkpoint/vladk/biencoder/val_ur_ccnet2_sp_ccnet_finetune_paq_all_lr2e5_40e/trivia_dev.json",
-        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/triviaqa-dev-multikilt.json",
-        None,
+        f"{root}/hotpot_train.json",
+        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-train-multikilt.json",
+        f"{root}/hotpot_train_dpr_input.json",
+        is_slot_task=False,
     )
-
-    dense_eval_results_to_dpr_train_files(
-        "/checkpoint/vladk/biencoder/val_ur_ccnet2_sp_ccnet_finetune_paq_all_lr2e5_40e/hotpot_dev.json",
-        "/checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/hotpotqa-dev-multikilt.json",
-        None,
-    )
+    
     """
 
     """
