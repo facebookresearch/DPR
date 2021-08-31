@@ -36,9 +36,7 @@ class RetrieverData(torch.utils.data.Dataset):
         self.data_files = get_dpr_files(self.file)
         assert (
             len(self.data_files) == 1
-        ), "RetrieverData source currently works with single files only. Files specified: {}".format(
-            self.data_files
-        )
+        ), "RetrieverData source currently works with single files only. Files specified: {}".format(self.data_files)
         self.file = self.data_files[0]
 
 
@@ -65,9 +63,7 @@ class QASrc(RetrieverData):
     def _process_question(self, question: str):
         # as of now, always normalize query
         question = normalize_question(question)
-        if self.query_special_suffix and not question.endswith(
-            self.query_special_suffix
-        ):
+        if self.query_special_suffix and not question.endswith(self.query_special_suffix):
             question += self.query_special_suffix
         return question
 
@@ -270,9 +266,7 @@ class KiltCsvCtxSrc(CsvCtxSrc):
         id_prefix: str = None,
         normalize: bool = False,
     ):
-        super().__init__(
-            file, id_col, text_col, title_col, id_prefix, normalize=normalize
-        )
+        super().__init__(file, id_col, text_col, title_col, id_prefix, normalize=normalize)
         self.mapping_file = mapping_file
 
     def convert_to_kilt(self, kilt_gold_file, dpr_output, kilt_out_file):
@@ -327,9 +321,7 @@ class JsonlTablesCtxSrc(object):
         docs = {}
         logger.info("Parsing Tables data from: %s", self.file)
         tables_dict = read_nq_tables_jsonl(self.file)
-        table_chunks = split_tables_to_chunks(
-            tables_dict, self.tables_chunk_sz, split_type=self.split_type
-        )
+        table_chunks = split_tables_to_chunks(tables_dict, self.tables_chunk_sz, split_type=self.split_type)
         for chunk in table_chunks:
             sample_id = self.id_prefix + str(chunk[0])
             docs[sample_id] = TableChunk(chunk[1], chunk[2], chunk[3])

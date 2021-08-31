@@ -36,12 +36,11 @@ def get_roberta_biencoder_components(args, inference_only: bool = False, **kwarg
 
 
 def get_fairseq_adamw_optimizer(model: nn.Module, args):
-    setattr(args, 'lr', [args.learning_rate])
+    setattr(args, "lr", [args.learning_rate])
     return FairseqAdam(args, model.parameters()).optimizer
 
 
 class RobertaEncoder(nn.Module):
-
     def __init__(self, fairseq_roberta_hub: RobertaHubInterface):
         super(RobertaEncoder, self).__init__()
         self.fairseq_roberta = fairseq_roberta_hub

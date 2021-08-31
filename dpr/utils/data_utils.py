@@ -128,9 +128,7 @@ class ShardedDataIterator(object):
         max_iterations = self.max_iterations - self.iteration
         shard_indices = self.get_shard_indices(epoch)
 
-        for i in range(
-            self.iteration * self.batch_size, len(shard_indices), self.batch_size
-        ):
+        for i in range(self.iteration * self.batch_size, len(shard_indices), self.batch_size):
             items_idxs = shard_indices[i : i + self.batch_size]
             if self.strict_batch_size and len(items_idxs) < self.batch_size:
                 logger.debug("Extending batch to max size")
@@ -147,17 +145,11 @@ class ShardedDataIterator(object):
             items = [self.data[idx] for idx in items_idxs]
             yield items
 
-        logger.info(
-            "Finished iterating, iteration={}, shard={}".format(
-                self.iteration, self.shard_id
-            )
-        )
+        logger.info("Finished iterating, iteration={}, shard={}".format(self.iteration, self.shard_id))
         # reset the iteration status
         self.iteration = 0
 
-    def iterate_ds_sampled_data(
-        self, num_iterations: int, epoch: int = 0
-    ) -> Iterator[List]:
+    def iterate_ds_sampled_data(self, num_iterations: int, epoch: int = 0) -> Iterator[List]:
         self.iteration = 0
         shard_indices = self.get_shard_indices(epoch)
         cycle_it = itertools.cycle(shard_indices)
@@ -167,11 +159,7 @@ class ShardedDataIterator(object):
             items = [self.data[idx] for idx in items_idxs]
             yield items
 
-        logger.info(
-            "Finished iterating, iteration={}, shard={}".format(
-                self.iteration, self.shard_id
-            )
-        )
+        logger.info("Finished iterating, iteration={}, shard={}".format(self.iteration, self.shard_id))
         # TODO: reset the iteration status?
         self.iteration = 0
 
@@ -204,17 +192,12 @@ class MultiSetDataIterator(object):
         self.rank = rank
 
         if sampling_rates:
-            self.max_its_pr_ds = [
-                int(ds.max_iterations_num() * sampling_rates[i])
-                for i, ds in enumerate(datasets)
-            ]
+            self.max_its_pr_ds = [int(ds.max_iterations_num() * sampling_rates[i]) for i, ds in enumerate(datasets)]
         else:
             self.max_its_pr_ds = [ds.max_iterations_num() for ds in datasets]
 
         self.max_iterations = sum(self.max_its_pr_ds)
-        logger.info(
-            "rank=%d; Multi set max_iterations per dataset %s", rank, self.max_its_pr_ds
-        )
+        logger.info("rank=%d; Multi set max_iterations per dataset %s", rank, self.max_its_pr_ds)
         logger.info("rank=%d; Multi set max_iterations %d", rank, self.max_iterations)
 
     def total_data_len(self) -> int:
@@ -243,18 +226,14 @@ class MultiSetDataIterator(object):
             )
             data_src_indices.extend([source] * src_its)
 
-            iterators.append(
-                self.iterables[source].iterate_ds_sampled_data(src_its, epoch=epoch)
-            )
+            iterators.append(self.iterables[source].iterate_ds_sampled_data(src_its, epoch=epoch))
 
         if self.shuffle:
             # to be able to resume, same shuffling should be used when starting from a failed/stopped iteration
             epoch_rnd = random.Random(self.shuffle_seed + epoch)
             epoch_rnd.shuffle(data_src_indices)
 
-        logger.info(
-            "rank=%d; data_src_indices len=%d", self.rank, len(data_src_indices)
-        )
+        logger.info("rank=%d; data_src_indices len=%d", self.rank, len(data_src_indices))
         for i, source_idx in enumerate(data_src_indices):
             it = iterators[source_idx]
             next_item = next(it, None)
@@ -262,9 +241,7 @@ class MultiSetDataIterator(object):
                 self.iteration += 1
                 yield (next_item, source_idx)
             else:
-                logger.warning(
-                    "rank=%d; Next item in the source %s is None", self.rank, source_idx
-                )
+                logger.warning("rank=%d; Next item in the source %s is None", self.rank, source_idx)
 
         logger.info("rank=%d; last iteration %d", self.rank, self.iteration)
 

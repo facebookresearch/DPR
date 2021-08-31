@@ -24,9 +24,7 @@ from dpr.utils.tokenizers import SimpleTokenizer
 
 logger = logging.getLogger(__name__)
 
-QAMatchStats = collections.namedtuple(
-    "QAMatchStats", ["top_k_hits", "questions_doc_hits"]
-)
+QAMatchStats = collections.namedtuple("QAMatchStats", ["top_k_hits", "questions_doc_hits"])
 
 QATableMatchStats = collections.namedtuple(
     "QAMatchStats", ["top_k_chunk_hits", "top_k_table_hits", "questions_doc_hits"]
@@ -62,9 +60,7 @@ def calculate_matches(
 
     processes = ProcessPool(processes=workers_num)
     logger.info("Matching answers in top docs...")
-    get_score_partial = partial(
-        check_answer, match_type=match_type, tokenizer=tokenizer
-    )
+    get_score_partial = partial(check_answer, match_type=match_type, tokenizer=tokenizer)
 
     questions_answers_docs = zip(answers, closest_docs)
     scores = processes.map(get_score_partial, questions_answers_docs)
@@ -193,9 +189,7 @@ def calculate_chunked_matches(
     processes = ProcessPool(processes=workers_num)
 
     logger.info("Matching answers in top docs...")
-    get_score_partial = partial(
-        check_chunked_docs_answer, match_type=match_type, tokenizer=tokenizer
-    )
+    get_score_partial = partial(check_chunked_docs_answer, match_type=match_type, tokenizer=tokenizer)
     questions_answers_docs = zip(answers, closest_docs)
     scores = processes.map(get_score_partial, questions_answers_docs)
     logger.info("Per question validation results len=%d", len(scores))

@@ -75,9 +75,7 @@ class BiEncoderTrainer(object):
             saved_state = load_states_from_checkpoint(model_file)
             set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
-        tensorizer, model, optimizer = init_biencoder_components(
-            cfg.encoder.encoder_model_type, cfg
-        )
+        tensorizer, model, optimizer = init_biencoder_components(cfg.encoder.encoder_model_type, cfg)
 
         model, optimizer = setup_for_distributed_mode(
             model,
@@ -114,16 +112,12 @@ class BiEncoderTrainer(object):
         rank: int = 0,
     ):
 
-        hydra_datasets = (
-            self.ds_cfg.train_datasets if is_train_set else self.ds_cfg.dev_datasets
-        )
+        hydra_datasets = self.ds_cfg.train_datasets if is_train_set else self.ds_cfg.dev_datasets
         sampling_rates = self.ds_cfg.sampling_rates
 
         logger.info(
             "Initializing task/set data %s",
-            self.ds_cfg.train_datasets_names
-            if is_train_set
-            else self.ds_cfg.dev_datasets_names,
+            self.ds_cfg.train_datasets_names if is_train_set else self.ds_cfg.dev_datasets_names,
         )
 
         # randomized data loading to avoid file system congestion
@@ -170,9 +164,7 @@ class BiEncoderTrainer(object):
             logger.warning("No data found for training.")
             return
 
-        updates_per_epoch = (
-            train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
-        )
+        updates_per_epoch = train_iterator.max_iterations // cfg.train.gradient_accumulation_steps
 
         total_updates = updates_per_epoch * cfg.train.num_train_epochs
         logger.info(" Total updates=%d", total_updates)
@@ -193,9 +185,7 @@ class BiEncoderTrainer(object):
                 steps_shift=shift,
             )
         else:
-            scheduler = get_schedule_linear(
-                self.optimizer, warmup_steps, total_updates, total_updates
-            )
+            scheduler = get_schedule_linear(self.optimizer, warmup_steps, total_updates, total_updates)
 
         eval_step = math.ceil(updates_per_epoch / cfg.train.eval_per_epoch)
         logger.info("  Eval step = %d", eval_step)
@@ -206,9 +196,7 @@ class BiEncoderTrainer(object):
             self._train_epoch(scheduler, epoch, eval_step, train_iterator)
 
         if cfg.local_rank in [-1, 0]:
-            logger.info(
-                "Training finished. Best validation checkpoint %s", self.best_cp_name
-            )
+            logger.info("Training finished. Best validation checkpoint %s", self.best_cp_name)
 
     def validate_and_save(self, epoch: int, iteration: int, scheduler):
         cfg = self.cfg
@@ -270,9 +258,7 @@ class BiEncoderTrainer(object):
 
             # get the token to be used for representation selection
             ds_cfg = self.ds_cfg.dev_datasets[dataset]
-            rep_positions = ds_cfg.selector.get_positions(
-                biencoder_input.question_ids, self.tensorizer
-            )
+            rep_positions = ds_cfg.selector.get_positions(biencoder_input.question_ids, self.tensorizer)
             encoder_type = ds_cfg.encoder_type
 
             loss, correct_cnt = _do_biencoder_fwd_pass(
@@ -341,10 +327,7 @@ class BiEncoderTrainer(object):
         dataset = 0
         for i, samples_batch in enumerate(data_iterator.iterate_ds_data()):
             # samples += 1
-            if (
-                len(q_represenations)
-                > cfg.train.val_av_rank_max_qs / distributed_factor
-            ):
+            if len(q_represenations) > cfg.train.val_av_rank_max_qs / distributed_factor:
                 break
 
             if isinstance(samples_batch, Tuple):
@@ -366,17 +349,13 @@ class BiEncoderTrainer(object):
             # get the token to be used for representation selection
             ds_cfg = self.ds_cfg.dev_datasets[dataset]
             encoder_type = ds_cfg.encoder_type
-            rep_positions = ds_cfg.selector.get_positions(
-                biencoder_input.question_ids, self.tensorizer
-            )
+            rep_positions = ds_cfg.selector.get_positions(biencoder_input.question_ids, self.tensorizer)
 
             # split contexts batch into sub batches since it is supposed to be too large to be processed in one batch
             for j, batch_start in enumerate(range(0, bsz, sub_batch_size)):
 
                 q_ids, q_segments = (
-                    (biencoder_input.question_ids, biencoder_input.question_segments)
-                    if j == 0
-                    else (None, None)
+                    (biencoder_input.question_ids, biencoder_input.question_segments) if j == 0 else (None, None)
                 )
 
                 if j == 0 and cfg.n_gpu > 1 and q_ids.size(0) == 1:
@@ -385,9 +364,7 @@ class BiEncoderTrainer(object):
                     continue
 
                 ctx_ids_batch = ctxs_ids[batch_start : batch_start + sub_batch_size]
-                ctx_seg_batch = ctxs_segments[
-                    batch_start : batch_start + sub_batch_size
-                ]
+                ctx_seg_batch = ctxs_segments[batch_start : batch_start + sub_batch_size]
 
                 q_attn_mask = self.tensorizer.get_attn_mask(q_ids)
                 ctx_attn_mask = self.tensorizer.get_attn_mask(ctx_ids_batch)
@@ -409,9 +386,7 @@ class BiEncoderTrainer(object):
                 ctx_represenations.extend(ctx_dense.cpu().split(1, dim=0))
 
             batch_positive_idxs = biencoder_input.is_positive
-            positive_idx_per_question.extend(
-                [total_ctxs + v for v in batch_positive_idxs]
-            )
+            positive_idx_per_question.extend([total_ctxs + v for v in batch_positive_idxs])
 
             if (i + 1) % log_result_step == 0:
                 logger.info(
@@ -424,12 +399,8 @@ class BiEncoderTrainer(object):
         ctx_represenations = torch.cat(ctx_represenations, dim=0)
         q_represenations = torch.cat(q_represenations, dim=0)
 
-        logger.info(
-            "Av.rank validation: total q_vectors size=%s", q_represenations.size()
-        )
-        logger.info(
-            "Av.rank validation: total ctx_vectors size=%s", ctx_represenations.size()
-        )
+        logger.info("Av.rank validation: total q_vectors size=%s", q_represenations.size())
+        logger.info("Av.rank validation: total ctx_vectors size=%s", ctx_represenations.size())
 
         q_num = q_represenations.size(0)
         assert q_num == len(positive_idx_per_question)
@@ -454,9 +425,7 @@ class BiEncoderTrainer(object):
                     q_num += remote_q_num
 
         av_rank = float(rank / q_num)
-        logger.info(
-            "Av.rank validation: average rank %s, total questions=%d", av_rank, q_num
-        )
+        logger.info("Av.rank validation: average rank %s, total questions=%d", av_rank, q_num)
         return av_rank
 
     def _train_epoch(
@@ -482,9 +451,7 @@ class BiEncoderTrainer(object):
         data_iteration = 0
 
         dataset = 0
-        for i, samples_batch in enumerate(
-            train_data_iterator.iterate_ds_data(epoch=epoch)
-        ):
+        for i, samples_batch in enumerate(train_data_iterator.iterate_ds_data(epoch=epoch)):
             if isinstance(samples_batch, Tuple):
                 samples_batch, dataset = samples_batch
 
@@ -513,13 +480,9 @@ class BiEncoderTrainer(object):
 
             selector = ds_cfg.selector if ds_cfg else DEFAULT_SELECTOR
 
-            rep_positions = selector.get_positions(
-                biencoder_batch.question_ids, self.tensorizer
-            )
+            rep_positions = selector.get_positions(biencoder_batch.question_ids, self.tensorizer)
 
-            loss_scale = (
-                cfg.loss_scale_factors[dataset] if cfg.loss_scale_factors else None
-            )
+            loss_scale = cfg.loss_scale_factors[dataset] if cfg.loss_scale_factors else None
             loss, correct_cnt = _do_biencoder_fwd_pass(
                 self.biencoder,
                 biencoder_batch,
@@ -540,15 +503,11 @@ class BiEncoderTrainer(object):
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
                 if cfg.train.max_grad_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        amp.master_params(self.optimizer), cfg.train.max_grad_norm
-                    )
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), cfg.train.max_grad_norm)
             else:
                 loss.backward()
                 if cfg.train.max_grad_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.biencoder.parameters(), cfg.train.max_grad_norm
-                    )
+                    torch.nn.utils.clip_grad_norm_(self.biencoder.parameters(), cfg.train.max_grad_norm)
 
             if (i + 1) % cfg.train.gradient_accumulation_steps == 0:
                 self.optimizer.step()
@@ -584,9 +543,7 @@ class BiEncoderTrainer(object):
                     data_iteration,
                     epoch_batches,
                 )
-                self.validate_and_save(
-                    epoch, train_data_iterator.get_iteration(), scheduler
-                )
+                self.validate_and_save(epoch, train_data_iterator.get_iteration(), scheduler)
                 self.biencoder.train()
 
         logger.info("Epoch finished on %d", cfg.local_rank)
@@ -658,12 +615,8 @@ def _calc_loss(
     """
     distributed_world_size = cfg.distributed_world_size or 1
     if distributed_world_size > 1:
-        q_vector_to_send = (
-            torch.empty_like(local_q_vector).cpu().copy_(local_q_vector).detach_()
-        )
-        ctx_vector_to_send = (
-            torch.empty_like(local_ctx_vectors).cpu().copy_(local_ctx_vectors).detach_()
-        )
+        q_vector_to_send = torch.empty_like(local_q_vector).cpu().copy_(local_q_vector).detach_()
+        ctx_vector_to_send = torch.empty_like(local_ctx_vectors).cpu().copy_(local_ctx_vectors).detach_()
 
         global_question_ctx_vectors = all_gather_list(
             [
@@ -691,18 +644,12 @@ def _calc_loss(
                 global_q_vector.append(q_vector.to(local_q_vector.device))
                 global_ctxs_vector.append(ctx_vectors.to(local_q_vector.device))
                 positive_idx_per_question.extend([v + total_ctxs for v in positive_idx])
-                hard_negatives_per_question.extend(
-                    [[v + total_ctxs for v in l] for l in hard_negatives_idxs]
-                )
+                hard_negatives_per_question.extend([[v + total_ctxs for v in l] for l in hard_negatives_idxs])
             else:
                 global_q_vector.append(local_q_vector)
                 global_ctxs_vector.append(local_ctx_vectors)
-                positive_idx_per_question.extend(
-                    [v + total_ctxs for v in local_positive_idxs]
-                )
-                hard_negatives_per_question.extend(
-                    [[v + total_ctxs for v in l] for l in local_hard_negatives_idxs]
-                )
+                positive_idx_per_question.extend([v + total_ctxs for v in local_positive_idxs])
+                hard_negatives_per_question.extend([[v + total_ctxs for v in l] for l in local_hard_negatives_idxs])
             total_ctxs += ctx_vectors.size(0)
         global_q_vector = torch.cat(global_q_vector, dim=0)
         global_ctxs_vector = torch.cat(global_ctxs_vector, dim=0)
@@ -810,15 +757,11 @@ def main(cfg: DictConfig):
     if cfg.train_datasets and len(cfg.train_datasets) > 0:
         trainer.run_train()
     elif cfg.model_file and cfg.dev_datasets:
-        logger.info(
-            "No train files are specified. Run 2 types of validation for specified model file"
-        )
+        logger.info("No train files are specified. Run 2 types of validation for specified model file")
         trainer.validate_nll()
         trainer.validate_average_rank()
     else:
-        logger.warning(
-            "Neither train_file or (model_file & dev_file) parameters are specified. Nothing to do."
-        )
+        logger.warning("Neither train_file or (model_file & dev_file) parameters are specified. Nothing to do.")
 
 
 if __name__ == "__main__":
