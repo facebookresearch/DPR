@@ -141,7 +141,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         index.hnsw.efConstruction = self.ef_construction
         self.index = index
 
-    def _index_data(self, data: List[Tuple[object, np.array]]):
+    def index_data(self, data: List[Tuple[object, np.array]]):
         n = len(data)
 
         # max norm is required before putting all vectors in the index to convert inner product similarity to L2

@@ -79,6 +79,30 @@ RESOURCES_MAP = {
         "compressed": True,
         "desc": "SQUAD 1.1 dev subset with passages pools for the Retriever train time validation",
     },
+    "data.retriever.webq-train": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-webquestions-train.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "WebQuestions dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.webq-dev": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-webquestions-dev.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "WebQuestions dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.curatedtrec-train": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-curatedtrec-train.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
+    },
+    "data.retriever.curatedtrec-dev": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-curatedtrec-dev.json.gz",
+        "original_ext": ".json",
+        "compressed": True,
+        "desc": "CuratedTrec dev subset with passages pools for the Retriever train time validation",
+    },
     "data.retriever.qas.nq-dev": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/nq-dev.qa.csv",
         "original_ext": ".csv",
@@ -124,6 +148,18 @@ RESOURCES_MAP = {
         "original_ext": ".csv",
         "compressed": False,
         "desc": "Trivia test subset for Retriever validation and IR results generation",
+    },
+    "data.retriever.qas.webq-test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/webquestions-test.qa.csv",
+        "original_ext": ".csv",
+        "compressed": False,
+        "desc": "WebQuestions test subset for Retriever validation and IR results generation",
+    },
+    "data.retriever.qas.curatedtrec-test": {
+        "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever/curatedtrec-test.qa.csv",
+        "original_ext": ".csv",
+        "compressed": False,
+        "desc": "CuratedTrec test subset for Retriever validation and IR results generation",
     },
     "data.gold_passages_info.nq_train": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/nq_gold_info/nq-train_gold_info.json.gz",
@@ -174,6 +210,16 @@ RESOURCES_MAP = {
         "compressed": False,
         "desc": "Encoded wikipedia files using a biencoder checkpoint("
         "checkpoint.retriever.single.nq.bert-base-encoder) trained on NQ dataset ",
+    },
+    "data.retriever_results.nq.single-adv-hn.wikipedia_passages": {
+        "s3_url": [
+            "https://dl.fbaipublicfiles.com/dpr/data/wiki_encoded/single-adv-hn/nq/wiki_passages_{}".format(i)
+            for i in range(50)
+        ],
+        "original_ext": ".pkl",
+        "compressed": False,
+        "desc": "Encoded wikipedia files using a biencoder checkpoint("
+        "checkpoint.retriever.single-adv-hn.nq.bert-base-encoder) trained on NQ dataset + adversarial hard negatives",
     },
     "data.retriever_results.nq.single.test": {
         "s3_url": "https://dl.fbaipublicfiles.com/dpr/data/retriever_results/single/nq-test.json.gz",

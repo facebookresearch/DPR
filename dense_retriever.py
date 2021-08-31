@@ -297,7 +297,8 @@ def main(cfg: DictConfig):
     question_encoder_state = {
         key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith(encoder_prefix)
     }
-    model_to_load.load_state_dict(question_encoder_state)
+    # TODO: long term HF state compatibility fix
+    model_to_load.load_state_dict(question_encoder_state, strict=False)
     vector_size = model_to_load.get_out_size()
     logger.info("Encoder vector_size=%d", vector_size)
 
