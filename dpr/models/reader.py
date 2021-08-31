@@ -24,12 +24,12 @@ from dpr.utils.model_utils import init_weights
 
 logger = logging.getLogger()
 
-ReaderBatch = collections.namedtuple('ReaderBatch', ['input_ids', 'start_positions', 'end_positions', 'answers_mask',
-                                                     'token_type_ids'])
+ReaderBatch = collections.namedtuple(
+    "ReaderBatch", ["input_ids", "start_positions", "end_positions", "answers_mask", "token_type_ids"]
+)
 
 
 class Reader(nn.Module):
-
     def __init__(self, encoder: nn.Module, hidden_size):
         super(Reader, self).__init__()
         self.encoder = encoder
@@ -37,17 +37,26 @@ class Reader(nn.Module):
         self.qa_classifier = nn.Linear(hidden_size, 1)
         init_weights([self.qa_outputs, self.qa_classifier])
 
-    def forward(self, input_ids: T, attention_mask: T, toke_type_ids: T, start_positions=None, end_positions=None,
-                answer_mask=None):
+    def forward(
+        self,
+        input_ids: T,
+        attention_mask: T,
+        toke_type_ids: T,
+        start_positions=None,
+        end_positions=None,
+        answer_mask=None,
+    ):
         # notations: N - number of questions in a batch, M - number of passages per questions, L - sequence length
         N, M, L = input_ids.size()
-        start_logits, end_logits, relevance_logits = self._forward(input_ids.view(N * M, L),
-                                                                   attention_mask.view(N * M, L),
-                                                                   toke_type_ids.view(N * M, L),
-                                                                   )
+        start_logits, end_logits, relevance_logits = self._forward(
+            input_ids.view(N * M, L),
+            attention_mask.view(N * M, L),
+            toke_type_ids.view(N * M, L),
+        )
         if self.training:
-            return compute_loss(start_positions, end_positions, answer_mask, start_logits, end_logits, relevance_logits,
-                                N, M)
+            return compute_loss(
+                start_positions, end_positions, answer_mask, start_logits, end_logits, relevance_logits, N, M
+            )
 
         return start_logits.view(N, M, L), end_logits.view(N, M, L), relevance_logits.view(N, M)
 
@@ -83,30 +92,36 @@ def compute_loss(start_positions, end_positions, answer_mask, start_logits, end_
     switch_loss = torch.sum(loss_fct(relevance_logits, switch_labels))
 
     # compute span loss
-    start_losses = [(loss_fct(start_logits, _start_positions) * _span_mask)
-                    for (_start_positions, _span_mask)
-                    in zip(torch.unbind(start_positions, dim=1), torch.unbind(answer_mask, dim=1))]
+    start_losses = [
+        (loss_fct(start_logits, _start_positions) * _span_mask)
+        for (_start_positions, _span_mask) in zip(
+            torch.unbind(start_positions, dim=1), torch.unbind(answer_mask, dim=1)
+        )
+    ]
 
-    end_losses = [(loss_fct(end_logits, _end_positions) * _span_mask)
-                  for (_end_positions, _span_mask)
-                  in zip(torch.unbind(end_positions, dim=1), torch.unbind(answer_mask, dim=1))]
-    loss_tensor = torch.cat([t.unsqueeze(1) for t in start_losses], dim=1) + \
-                  torch.cat([t.unsqueeze(1) for t in end_losses], dim=1)
+    end_losses = [
+        (loss_fct(end_logits, _end_positions) * _span_mask)
+        for (_end_positions, _span_mask) in zip(torch.unbind(end_positions, dim=1), torch.unbind(answer_mask, dim=1))
+    ]
+    loss_tensor = torch.cat([t.unsqueeze(1) for t in start_losses], dim=1) + torch.cat(
+        [t.unsqueeze(1) for t in end_losses], dim=1
+    )
 
     loss_tensor = loss_tensor.view(N, M, -1).max(dim=1)[0]
     span_loss = _calc_mml(loss_tensor)
     return span_loss + switch_loss
 
 
-def create_reader_input(pad_token_id: int,
-                        samples: List[ReaderSample],
-                        passages_per_question: int,
-                        max_length: int,
-                        max_n_answers: int,
-                        is_train: bool,
-                        shuffle: bool,
-                        sep_token_id: int,
-                        ) -> ReaderBatch:
+def create_reader_input(
+    pad_token_id: int,
+    samples: List[ReaderSample],
+    passages_per_question: int,
+    max_length: int,
+    max_n_answers: int,
+    is_train: bool,
+    shuffle: bool,
+    sep_token_id: int,
+) -> ReaderBatch:
     """
     Creates a reader batch instance out of a list of ReaderSample-s
     :param pad_token_id: id of the padding token
@@ -129,17 +144,19 @@ def create_reader_input(pad_token_id: int,
         positive_ctxs = sample.positive_passages
         negative_ctxs = sample.negative_passages if is_train else sample.passages
 
-        sample_tensors = _create_question_passages_tensors(positive_ctxs,
-                                                           negative_ctxs,
-                                                           passages_per_question,
-                                                           empty_sequence,
-                                                           max_n_answers,
-                                                           pad_token_id,
-                                                           sep_token_id,
-                                                           is_train,
-                                                           is_random=shuffle)
+        sample_tensors = _create_question_passages_tensors(
+            positive_ctxs,
+            negative_ctxs,
+            passages_per_question,
+            empty_sequence,
+            max_n_answers,
+            pad_token_id,
+            sep_token_id,
+            is_train,
+            is_random=shuffle,
+        )
         if not sample_tensors:
-            logger.debug('No valid passages combination for question=%s ', sample.question)
+            logger.debug("No valid passages combination for question=%s ", sample.question)
             continue
         sample_input_ids, starts_tensor, ends_tensor, answer_mask, sample_ttids = sample_tensors
         input_ids.append(sample_input_ids)
@@ -149,7 +166,7 @@ def create_reader_input(pad_token_id: int,
             end_positions.append(ends_tensor)
             answers_masks.append(answer_mask)
     input_ids = torch.cat([ids.unsqueeze(0) for ids in input_ids], dim=0)
-    token_type_ids = torch.cat([ids.unsqueeze(0) for ids in token_type_ids], dim=0) #.unsqueeze(0)
+    token_type_ids = torch.cat([ids.unsqueeze(0) for ids in token_type_ids], dim=0)  # .unsqueeze(0)
 
     if is_train:
         start_positions = torch.stack(start_positions, dim=0)
@@ -160,17 +177,17 @@ def create_reader_input(pad_token_id: int,
 
 
 def _calc_mml(loss_tensor):
-    marginal_likelihood = torch.sum(torch.exp(
-        - loss_tensor - 1e10 * (loss_tensor == 0).float()), 1)
-    return -torch.sum(torch.log(marginal_likelihood +
-                                torch.ones(loss_tensor.size(0)).cuda() * (marginal_likelihood == 0).float()))
+    marginal_likelihood = torch.sum(torch.exp(-loss_tensor - 1e10 * (loss_tensor == 0).float()), 1)
+    return -torch.sum(
+        torch.log(marginal_likelihood + torch.ones(loss_tensor.size(0)).cuda() * (marginal_likelihood == 0).float())
+    )
 
 
 def _pad_to_len(seq: T, pad_id: int, max_len: int):
     s_len = seq.size(0)
     if s_len > max_len:
         # logger.info('!!! seq len > max = %d', s_len)
-        return seq[0: max_len]
+        return seq[0:max_len]
     return torch.cat([seq, torch.Tensor().new_full((max_len - s_len,), pad_id, dtype=torch.long)], dim=0)
 
 
@@ -185,20 +202,22 @@ def _get_positive_idx(positives: List[ReaderPassage], max_len: int, is_random: b
 
     if not _get_answer_spans(positive_idx, positives, max_len):
         # question may be too long, find the first positive with at least one valid span
-        positive_idx = next((i for i in range(len(positives)) if _get_answer_spans(i, positives, max_len)),
-                            None)
+        positive_idx = next((i for i in range(len(positives)) if _get_answer_spans(i, positives, max_len)), None)
     return positive_idx
 
 
-def _create_question_passages_tensors(positives: List[ReaderPassage], negatives: List[ReaderPassage], total_size: int,
-                                      empty_ids: T,
-                                      max_n_answers: int,
-                                      pad_token_id: int,
-                                      sep_token_id: int,
-                                      is_train: bool,
-                                      is_random: bool = True,
-                                      first_segment_ttid: int = 0
-                                      ):
+def _create_question_passages_tensors(
+    positives: List[ReaderPassage],
+    negatives: List[ReaderPassage],
+    total_size: int,
+    empty_ids: T,
+    max_n_answers: int,
+    pad_token_id: int,
+    sep_token_id: int,
+    is_train: bool,
+    is_random: bool = True,
+    first_segment_ttid: int = 0,
+):
     max_len = empty_ids.size(0)
     if is_train:
         # select just one positive
@@ -206,7 +225,7 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
         if positive_idx is None:
             return None
 
-        positive_a_spans = _get_answer_spans(positive_idx, positives, max_len)[0: max_n_answers]
+        positive_a_spans = _get_answer_spans(positive_idx, positives, max_len)[0:max_n_answers]
 
         answer_starts = [span[0] for span in positive_a_spans]
         answer_ends = [span[1] for span in positive_a_spans]
@@ -217,13 +236,13 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
         positive_input_ids = _pad_to_len(positives[positive_idx].sequence_ids, pad_token_id, max_len)
 
         answer_starts_tensor = torch.zeros((total_size, max_n_answers)).long()
-        answer_starts_tensor[0, 0:len(answer_starts)] = torch.tensor(answer_starts)
+        answer_starts_tensor[0, 0 : len(answer_starts)] = torch.tensor(answer_starts)
 
         answer_ends_tensor = torch.zeros((total_size, max_n_answers)).long()
-        answer_ends_tensor[0, 0:len(answer_ends)] = torch.tensor(answer_ends)
+        answer_ends_tensor[0, 0 : len(answer_ends)] = torch.tensor(answer_ends)
 
         answer_mask = torch.zeros((total_size, max_n_answers), dtype=torch.long)
-        answer_mask[0, 0:len(answer_starts)] = torch.tensor([1 for _ in range(len(answer_starts))])
+        answer_mask[0, 0 : len(answer_starts)] = torch.tensor([1 for _ in range(len(answer_starts))])
 
         positives_selected = [positive_input_ids]
 
@@ -234,10 +253,9 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
         answer_mask = None
 
     positives_num = len(positives_selected)
-    negative_idxs = np.random.permutation(range(len(negatives))) if is_random else range(
-        len(negatives) - positives_num)
+    negative_idxs = np.random.permutation(range(len(negatives))) if is_random else range(len(negatives) - positives_num)
 
-    negative_idxs = negative_idxs[:total_size - positives_num]
+    negative_idxs = negative_idxs[: total_size - positives_num]
 
     negatives_selected = [_pad_to_len(negatives[i].sequence_ids, pad_token_id, max_len) for i in negative_idxs]
     negatives_num = len(negatives_selected)
@@ -246,9 +264,11 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
 
     toke_type_ids = _create_token_type_ids(input_ids, sep_token_id, first_segment_ttid)
 
-    if positives_num+negatives_num < total_size:
-        empty_negatives = [empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num+negatives_num))]
-        empty_token_type_ids = [empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num+negatives_num))]
+    if positives_num + negatives_num < total_size:
+        empty_negatives = [empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num + negatives_num))]
+        empty_token_type_ids = [
+            empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num + negatives_num))
+        ]
 
         input_ids = torch.cat([input_ids, *empty_negatives], dim=0)
         toke_type_ids = torch.cat([toke_type_ids, *empty_token_type_ids], dim=0)
@@ -256,16 +276,18 @@ def _create_question_passages_tensors(positives: List[ReaderPassage], negatives:
     return input_ids, answer_starts_tensor, answer_ends_tensor, answer_mask, toke_type_ids
 
 
-def _create_token_type_ids(input_ids: torch.Tensor, sep_token_id: int,
-                          first_segment_ttid: int = 0):
+def _create_token_type_ids(input_ids: torch.Tensor, sep_token_id: int, first_segment_ttid: int = 0):
 
     token_type_ids = torch.full(input_ids.shape, fill_value=0)
+    # return token_type_ids
     sep_tokens_indexes = torch.nonzero(input_ids == sep_token_id)
     bsz = input_ids.size(0)
     second_ttid = 0 if first_segment_ttid == 1 else 1
 
     for i in range(bsz):
         # audio part is at the left side of the first SEP token
-        token_type_ids[i, 0: sep_tokens_indexes[2 * i, 1] + 1] = first_segment_ttid
-        token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1:] = second_ttid
+        # if sep_tokens_indexes[2 * i, 1] + 1 == 50 and token_type_ids[0].size(0) == 50:
+        #    logger.info("!!! input_ids_i %s", input_ids[i])
+        token_type_ids[i, 0 : sep_tokens_indexes[2 * i, 1] + 1] = first_segment_ttid
+        token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1 :] = second_ttid
     return token_type_ids

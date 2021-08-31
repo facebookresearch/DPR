@@ -23,6 +23,10 @@ if transformers.__version__.startswith("4"):
     from transformers import BertTokenizer
     from transformers import RobertaTokenizer
     from transformers import Wav2Vec2Model, Wav2Vec2Config
+
+    if transformers.__version__.startswith("4.9"):
+        from transformers.models.hubert.modeling_hubert import HubertModel
+        from transformers.models.hubert.configuration_hubert import HubertConfig
 else:
     from transformers.modeling_bert import BertConfig, BertModel
     from transformers.optimization import AdamW
@@ -152,9 +156,6 @@ def _add_special_tokens(tokenizer, special_tokens):
     logger.info("!!! test encode %s", enc)
     logger.info("!!! test decode %s", tokenizer.decode(enc))
 
-    # for st in special_tokens:
-    #    logging.info("Special token=%s id=%s", st, tokenizer.convert_tokens_to_ids([st]))
-
 
 def get_roberta_tensorizer(pretrained_model_cfg: str, do_lower_case: bool, sequence_length: int):
     tokenizer = get_roberta_tokenizer(pretrained_model_cfg, do_lower_case=do_lower_case)
@@ -217,6 +218,20 @@ def get_wav2vec_encoder(
     output_layer: int,
 ):
     encoder = Wav2Vec2HFEncoder.init_encoder(
+        pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation, output_layer=output_layer
+    )
+    return encoder
+
+
+def get_hubert_encoder(
+    pretrained_model: str,
+    max_audio_t: int,
+    extra_proj_d: int,
+    final_drop: float,
+    use_activation: bool,
+    output_layer: int,
+):
+    encoder = HuBertHFEncoder.init_encoder(
         pretrained_model, max_audio_t, extra_proj_d, final_drop, use_activation, output_layer=output_layer
     )
     return encoder
@@ -355,6 +370,125 @@ class Wav2Vec2HFEncoder(Wav2Vec2Model):
             )
         else:
             return Wav2Vec2HFEncoder(cfg, max_audio_t, projection_dim, dropout, use_activation, output_layer)
+
+    def forward(
+        self,
+        input_ids: T,
+        _token_type_ids: T,
+        attention_mask: T,
+        representation_token_pos=0,
+    ) -> Tuple[T, ...]:
+        # logger.info("!!! input_ids %s %s", input_ids.size(), input_ids.device)
+        wav2vec_out = super().forward(input_ids, output_hidden_states=True)  # attention_mask=attention_mask
+        wav2vec_out = (
+            wav2vec_out.last_hidden_state
+            if self.output_layer in [None, -1]
+            else wav2vec_out.hidden_states[self.output_layer]
+        )
+        B, T, C = wav2vec_out.size()
+
+        if self.dense:
+            flat_encoded_out = wav2vec_out.reshape(B, -1)
+            if flat_encoded_out.size(1) > self.max_audio:
+                logger.warning("TxC>max_audio_t: %d>%d", flat_encoded_out.size(1), self.max_audio)
+
+            # TODO: make a util method
+            def pad_to_len(
+                seq,
+                max_len,
+            ):
+                s_len = seq.size(0)
+                if s_len > max_len:
+                    return seq[0:max_len]
+                r = torch.cat(
+                    [
+                        seq,
+                        torch.Tensor().new_full((max_len - s_len,), 0, dtype=torch.float).to(flat_encoded_out.device),
+                    ],
+                    dim=0,
+                )
+                return r
+
+            flat_encoded_out = torch.cat(
+                [pad_to_len(flat_encoded_out[i], self.max_audio).view(1, -1) for i in range(B)],
+                dim=0,
+            )
+            wav2vec_out = self.dense(flat_encoded_out)
+
+            if self.use_activation:
+                wav2vec_out = self.activation(wav2vec_out)
+
+            if self.training:
+                wav2vec_out = self.dropout(wav2vec_out)
+        else:
+            wav2vec_out = wav2vec_out[:, representation_token_pos, :]
+
+        return None, wav2vec_out, None
+
+    def get_out_size(self):
+        return self.config.hidden_size
+
+
+# TOD): currently a copy-paste from wav2vec
+
+
+class HuBertHFEncoder(HubertModel):
+    def __init__(
+        self, config, max_audio_t: int, project_dim, final_dropout: float, use_activation: bool, output_layer: int = -1
+    ):
+        HubertModel.__init__(self, config)
+        hidden_size = config.hidden_size
+
+        self.max_audio = max_audio_t * hidden_size
+        logger.info(
+            "HuBertHFEncoder: max_audio_t %s, project_dim %s, dropout %s, use_activation %s, output_layer %d",
+            self.max_audio,
+            project_dim,
+            final_dropout,
+            use_activation,
+            output_layer,
+        )
+
+        self.dense = nn.Linear(self.max_audio, hidden_size) if project_dim != 0 else None
+        self.activation = nn.Tanh()
+        self.dropout = nn.Dropout(final_dropout)
+
+        # self.apply_mask = apply_mask
+        self.use_activation = use_activation
+        self.init_weights()
+
+        self.output_layer = output_layer
+
+    @classmethod
+    def init_encoder(
+        cls,
+        cfg_name: str,
+        max_audio_t: int,
+        projection_dim: int,
+        dropout: float,
+        use_activation: bool,
+        pretrained: bool = True,
+        output_layer: int = -1,
+    ) -> HubertModel:
+        logger.info("Initializing HF HubertModel Encoder. cfg_name=%s", cfg_name)
+        cfg_name = cfg_name if cfg_name else "facebook/hubert-base-960h"
+        cfg = HubertConfig.from_pretrained(cfg_name)
+        if dropout != 0:
+            cfg.attention_probs_dropout_prob = dropout
+            cfg.hidden_dropout_prob = dropout
+
+        if pretrained:
+            return cls.from_pretrained(
+                cfg_name,
+                max_audio_t=max_audio_t,
+                config=cfg,
+                project_dim=projection_dim,
+                final_dropout=dropout,
+                use_activation=use_activation,
+                output_layer=output_layer,
+            )
+        else:
+            return HuBertHFEncoder(cfg, max_audio_t, projection_dim, dropout, use_activation, output_layer)
 
     def forward(
         self,

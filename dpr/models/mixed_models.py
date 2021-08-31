@@ -13,6 +13,7 @@ from dpr.models.hf_models import (
     get_hf_model_param_grouping,
     get_optimizer_grouped,
     get_wav2vec_encoder,
+    get_hubert_encoder,
     get_bert_tensorizer_p,
 )
 from dpr.utils.data_utils import Tensorizer
@@ -33,7 +34,6 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
     else:
         # del question_encoder.masked_spec_embed
         logger.info("!!! question_encoder state %s", question_encoder.state_dict().keys())
-
         biencoder = MixedBiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
 
     if not hasattr(cfg, "train"):  # eval mode
@@ -62,7 +62,16 @@ def get_audio_mixed_biencoder_components(cfg, inference_only: bool = False, **kw
 
 def get_query_encoder(cfg):
     # TODO: unify initialization
-    if cfg.encoder.q_encoder_type == "hf-wav2vec" and cfg.encoder.q_encoder_model_cfg:  # HF-based
+    if cfg.encoder.q_encoder_type == "hf-hubert" and cfg.encoder.q_encoder_model_cfg:  # HF-based
+        query_encoder = get_hubert_encoder(
+            cfg.encoder.q_encoder_model_cfg,
+            cfg.encoder.q_max_audio_t,
+            cfg.encoder.q_projection_dim,
+            cfg.encoder.q_dropout,
+            cfg.encoder.q_use_activation,
+            cfg.encoder.q_output_layer,
+        )
+    elif cfg.encoder.q_encoder_type == "hf-wav2vec" and cfg.encoder.q_encoder_model_cfg:  # HF-based
         query_encoder = get_wav2vec_encoder(
             cfg.encoder.q_encoder_model_cfg,
             cfg.encoder.q_max_audio_t,
