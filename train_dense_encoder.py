@@ -619,11 +619,12 @@ class BiEncoderTrainer(object):
         logger.info("Saved state loaded")
         if not self.cfg.ignore_checkpoint_optimizer:
             if saved_state.optimizer_dict:
-                logger.info("Loading saved optimizer state ...")
+                logger.info("Using saved optimizer state")
                 self.optimizer.load_state_dict(saved_state.optimizer_dict)
 
-            if saved_state.scheduler_dict:
-                self.scheduler_state = saved_state.scheduler_dict
+        if not self.cfg.ignore_checkpoint_lr and saved_state.scheduler_dict:
+            logger.info("Using saved scheduler_state")
+            self.scheduler_state = saved_state.scheduler_dict
 
 
 def _calc_loss(
@@ -686,8 +687,6 @@ def _calc_loss(
         positive_idx_per_question = local_positive_idxs
         hard_negatives_per_question = local_hard_negatives_idxs
 
-    # logger.info("!!! global_q_vector %s rank=%s", global_q_vector.device, cfg.local_rank)
-    # logger.info("!!! global_q_vector %s rank=%s", global_q_vector.device, cfg.local_rank)
     loss, is_correct = loss_function.calc(
         global_q_vector,
         global_ctxs_vector,
@@ -703,7 +702,6 @@ def _print_norms(model):
     total_norm = 0
     for n, p in model.named_parameters():
         if p.grad is None:
-            # logger.info("!!! no grad for p=%s", n)
             continue
         param_norm = p.grad.data.norm(2)
         total_norm += param_norm.item() ** 2

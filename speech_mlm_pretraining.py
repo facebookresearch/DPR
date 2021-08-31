@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import transformers
 from datasets import load_dataset
-from torch import nn
+from transformers import BertTokenizer, BertForPreTraining
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
@@ -21,12 +21,11 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-from transformers import BertTokenizer, BertForPreTraining
-#from transformers.models.bert.tokenization_bert import BertTokenizer
-#from transformers.models.bert.modeling_bert import BertPreTrainedModel
+
+# from transformers.models.bert.tokenization_bert import BertTokenizer
+# from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
-
 from transformers.utils import check_min_version
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -78,6 +77,11 @@ class ModelArguments:
             "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
             "with private models)."
         },
+    )
+
+    seq_classification: bool = field(
+        default=False,
+        metadata={"help": "Use MLM+NSP model" "with private models)."},
     )
 
 
@@ -288,8 +292,8 @@ def main():
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
-    logger.info("!!! Config=%s", config)
-    logger.info("!!! model_args=%s", model_args)
+    logger.info("Config=%s", config)
+    logger.info("model_args=%s", model_args)
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -321,6 +325,18 @@ def main():
         _add_special_tokens(tokenizer, new_tokens)
 
     """
+    logger.info("additional_special_tokens %s", tokenizer.additional_special_tokens)
+    logger.info("all_special_tokens_extended: %s", tokenizer.all_special_tokens_extended)
+    logger.info("additional_special_tokens_ids: %s", tokenizer.additional_special_tokens_ids)
+    logger.info("all_special_tokens %s", tokenizer.all_special_tokens)
+
+    logger.info("!!! test tokenize %s", tokenizer.tokenize("[CLS] [w2v60] [w2v19] [w2v46][SEP]does"))
+    enc = tokenizer.encode("[CLS] [w2v60] [w2v19] [w2v46] [w2v24][SEP] does")
+    logger.info("!!! test encode %s", enc)
+    logger.info("!!! test decode %s", tokenizer.decode(enc))
+    """
+
+    """
     if not os.path.exists(model_args.model_name_or_path):
         new_tokens_prefix = "ct"
         new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
@@ -332,8 +348,8 @@ def main():
     # ----------------------------------------------------------------------------
 
     if model_args.seq_classification and model_args.model_name_or_path:
+        logger.info("Initializing mlm+nsp model")
         model = BertForPreTraining.from_pretrained(model_args.model_name_or_path)
-
     elif model_args.model_name_or_path:
 
         model = AutoModelForMaskedLM.from_pretrained(
@@ -479,6 +495,7 @@ def main():
         audio_mlm_t_sigma=data_args.audio_mlm_t_sigma,
         audio_mlm_t_max=data_args.audio_mlm_t_max,
         audio_mlm_t_min=data_args.audio_mlm_t_min,
+        nsp_expand=model_args.seq_classification,
     )
 
     # DataCollatorForLM
@@ -561,8 +578,8 @@ class SpeechDataCollatorForMLM:
     pad_to_multiple_of: Optional[int] = None
     audio_mlm_prob: int = 0.03
     audio_mlm_t_sigma: float = 3.0
-    audio_mlm_t_max: int = 10
-    audio_mlm_t_min: int = 3
+    audio_mlm_t_max: int = 40
+    audio_mlm_t_min: int = 8
     use_eval_gen: bool = False
 
     only_text_mode: bool = False
@@ -570,6 +587,7 @@ class SpeechDataCollatorForMLM:
     mask_text: bool = True
     mask_audio: bool = True
     audio_token_type_id: int = 1
+    nsp_expand: bool = False
 
     def __post_init__(self):
         if self.only_text_mode:
@@ -586,11 +604,21 @@ class SpeechDataCollatorForMLM:
         self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]
     ) -> Dict[str, torch.Tensor]:
         # Handle dict or lists with proper padding and conversion to tensor.
+
+        if self.nsp_expand:
+            examples, nsp_labels = expand_nsp(self.tokenizer, examples)
+
+        # logger.info("!!! examples %s", len(examples))
+        # logger.info("!!! examples0 input_ids %s", type(examples[0]["input_ids"]))
+
         if isinstance(examples[0], (dict, BatchEncoding)):
             batch = self.tokenizer.pad(examples, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of)
         else:
             logger.info("!!! not BatchEncoding ")
             batch = {"input_ids": _collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)}
+
+        if self.nsp_expand:
+            batch["next_sentence_label"] = torch.tensor(nsp_labels).to(batch["input_ids"].device)
 
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
@@ -599,7 +627,6 @@ class SpeechDataCollatorForMLM:
         #    logger.info('!!! no special mask')
 
         # logger.info("!!! input_ids 0 =%s %s", batch["input_ids"][0], batch["input_ids"].size())
-
         # logging.info("!!! attention_mask 0 =%s", batch["attention_mask"][0])
         # logging.info("!!! decoded input_ids 0 =%s", self.tokenizer.decode(batch["input_ids"][0]))
 
@@ -737,6 +764,19 @@ class SpeechDataCollatorForMLM:
 
         sep_tokens_indexes = torch.nonzero(input_ids == tokenizer.sep_token_id)
         bsz = input_ids.size(0)
+
+        if sep_tokens_indexes.size(0) == 2 * bsz:
+            double_sep = True
+        elif sep_tokens_indexes.size(0) == bsz:
+            # audio or text only
+            double_sep = False
+        else:
+            raise RuntimeError(
+                "Incorrect SEP token presence bsz={} sep_tokens_indexes={}".format(bsz, sep_tokens_indexes)
+            )
+
+        token_type_ids = torch.full(input_ids.shape, dtype=token_type_ids.dtype, fill_value=0, device=input_ids.device)
+
         if self.only_text_mode and sep_tokens_indexes.size() != (bsz * 2, 2):
             # Text only
             # logging.warning(f"Unexpected sep_tokens_indexes size={sep_tokens_indexes.size()}")
@@ -748,8 +788,20 @@ class SpeechDataCollatorForMLM:
             text_ttid = 0 if audio_ttid == 1 else 1
             for i in range(bsz):
                 # audio part is at the left side of the first SEP token
-                token_type_ids[i, 0 : sep_tokens_indexes[2 * i, 1] + 1] = audio_ttid
-                token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1 :] = text_ttid
+                """
+                if sep_tokens_indexes[2 * i, 1] + 1 >= token_type_ids[i].size(0):
+                    logger.warning(
+                        "!!! size mismatch tti=%s while sep_tokens_indexes[2 * i]=%s",
+                        token_type_ids[i].size(),
+                        sep_tokens_indexes[2 * i],
+                    )
+                """
+                if double_sep:
+                    token_type_ids[i, 0 : sep_tokens_indexes[2 * i, 1] + 1] = audio_ttid
+                    token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1 :] = text_ttid
+                else:  # audio only
+                    token_type_ids[i, 0 : sep_tokens_indexes[i, 1] + 1] = audio_ttid
+                    # token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1:] = text_ttid
         return token_type_ids
 
     def _gen_segment_len(self, average: float, shape: Tuple = (1,)) -> Union[int, torch.Tensor]:
@@ -789,6 +841,58 @@ class SpeechDataCollatorForMLM:
         return indices_segments
 
 
+def expand_nsp(
+    tokenizer,
+    examples: List[Dict[str, List[int]]],
+    max_neg_per_question: int = 1,
+) -> (List[Dict[str, List[int]]], List[int]):
+    bsz = len(examples)
+    questions_ids = []
+    ctx_ids = []
+    positive_pair_ids = []
+    for e in examples:
+        token_ids = e["input_ids"]
+        sep_idx = token_ids.index(102)
+        questions_ids.append(token_ids[:sep_idx])
+        ctx_ids.append(token_ids[sep_idx:])
+        positive_pair_ids.append(token_ids)
+
+    expanded_input_ids = []
+    labels = []
+
+    def _trunc_max(ids_list: List[int], max_len: int = 512):
+        ids_list = ids_list[0:max_len]
+        ids_list[-1] = tokenizer.sep_token_id
+        return ids_list
+
+    for i, q in enumerate(questions_ids):
+        expanded_input_ids.append(_trunc_max(positive_pair_ids[i]))
+        labels.append(0)
+        q_positive_ctx = ctx_ids[i]
+        # create negative pairs
+        q_neg_added = 0
+        for j in range(bsz):
+            neg_ctx = ctx_ids[j]
+            if j == i or neg_ctx == q_positive_ctx:
+                continue
+            neg_pair = q + neg_ctx
+            expanded_input_ids.append(_trunc_max(neg_pair))
+            labels.append(1)
+            q_neg_added += 1
+            if q_neg_added >= max_neg_per_question:
+                break
+
+    expanded_examples = [
+        {
+            "input_ids": expanded_input_ids[i],
+            "attention_mask": [1] * len(expanded_input_ids[i]),
+            "token_type_ids": [0] * len(expanded_input_ids[i]),
+        }
+        for i in range(len(expanded_input_ids))
+    ]
+    return expanded_examples, labels
+
+
 class SpeechMLMCallback(transformers.TrainerCallback):
     def __init__(self, collator: SpeechDataCollatorForMLM):
         self.collator = collator
@@ -801,96 +905,10 @@ class SpeechMLMCallback(transformers.TrainerCallback):
 
     def on_step_begin(self, args, state, control, **kwargs):
         self.collator.use_eval_gen = False
-        # logging.info('!! on_step_begin')
 
     def on_prediction_step(self, args, state, control, **kwargs):
         self.collator.use_eval_gen = True
-        # logging.info('!! on_prediction_step')
 
-"""
-class BertForSequenceClassification(BertPreTrainedModel):
-    def __init__(self, bert_model, config, classifier_dropout):
-        super().__init__(config)
-        self.num_labels = 2
-        self.config = config
-        self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-
-        self.init_weights()
-
-        self.bert = bert_model
-
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-    ):
-        r"""
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
-            Labels for computing the sequence classification/regression loss. Indices should be in :obj:`[0, ...,
-            config.num_labels - 1]`. If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
-            If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        pooled_output = outputs[1]
-
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
-
-        loss = None
-        if labels is not None:
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
-
-        return SequenceClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
-"""
 
 #######################################################################################################
 

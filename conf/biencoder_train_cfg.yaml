@@ -45,6 +45,7 @@ special_tokens:
 
 ignore_checkpoint_offset: False
 ignore_checkpoint_optimizer: False
+ignore_checkpoint_lr: False
 
 # set to >1 to enable multiple query encoders
 multi_q_encoder: False

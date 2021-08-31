@@ -220,7 +220,7 @@ ReaderPreprocessingCfg = collections.namedtuple(
 DEFAULT_PREPROCESSING_CFG_TRAIN = ReaderPreprocessingCfg(
     use_tailing_sep=False,
     skip_no_positves=True,
-    include_gold_passage=True,  # [changed for speech Q&A ]
+    include_gold_passage=False,  # True - for speech Q&A
     gold_page_only_positives=True,
     max_positives=20,
     max_negatives=50,
@@ -254,10 +254,12 @@ def preprocess_retriever_data(
     # TODO: tmp
     biencoder_train_file = "/checkpoint/vladk/dpr_open_source/biencoder-nq-train.json"
     biencoder_dev_file = "/checkpoint/vladk/dpr_open_source/biencoder-nq-dev.json"
-
-    gold_passage_map, canonical_questions = _get_gold_ctx_dict2(
-        gold_info_file, biencoder_train_file if is_train_set else biencoder_dev_file
-    )
+    canonical_questions = None
+    gold_passage_map = None
+    if gold_info_file:
+        gold_passage_map, canonical_questions = _get_gold_ctx_dict2(
+            gold_info_file, biencoder_train_file if is_train_set else biencoder_dev_file
+        )
 
     no_positive_passages = 0
     positives_from_gold = 0
@@ -285,7 +287,7 @@ def preprocess_retriever_data(
         question = sample["question"]
         question_txt = sample["query_text"] if "query_text" in sample else question
 
-        if question_txt in canonical_questions:
+        if canonical_questions and question_txt in canonical_questions:
             question_txt = canonical_questions[question_txt]
 
         positive_passages, negative_passages = _select_reader_passages(
@@ -430,7 +432,7 @@ def _select_reader_passages(
     sample: Dict,
     question: str,
     tensorizer: Tensorizer,
-    gold_passage_map: Dict[str, ReaderPassage],
+    gold_passage_map: Optional[Dict[str, ReaderPassage]],
     gold_page_only_positives: bool,
     max_positives: int,
     max1_negatives: int,
@@ -458,7 +460,7 @@ def _select_reader_passages(
                 positive_samples,
             )
         )
-        if gold_page_only_positives
+        if gold_page_only_positives and gold_passage_map
         else []
     )
 
@@ -484,9 +486,7 @@ def _select_reader_passages(
                     answers,
                     question,
                 )
-
             ctx.has_answer = bool(answers_spans)
-
         return ctx
 
     # check if any of the selected ctx+ has answer spans

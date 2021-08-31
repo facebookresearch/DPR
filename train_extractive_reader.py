@@ -80,24 +80,26 @@ class ReaderTrainer(object):
 
         # TODO: tmp logic for speechQA
         # -----------------------------------------------------------
-        """
+
         new_tokens_prefix = "w2v"
         new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
         from dpr.models.hf_models import _add_special_tokens
 
         _add_special_tokens(tensorizer.tokenizer, new_tokens)
-        """
-        new_tokens_prefix = "ct"
-        new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
-        from dpr.models.hf_models import _add_special_tokens
 
-        _add_special_tokens(tensorizer.tokenizer, new_tokens)
+        #
+        # new_tokens_prefix = "ct"
+        # new_tokens = ["[" + new_tokens_prefix + str(i) + "]" for i in range(100)]
+        # from dpr.models.hf_models import _add_special_tokens
 
-        cp_state = torch.load(cfg.tmp_encoder_cp_name)
-        key_shift = len("bert.")
-        logger.info("Loading pre-trained reader weights from %s", cfg.tmp_encoder_cp_name)
-        cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith("bert.")}
-        reader.load_state_dict(cp_state, strict=False)
+        # _add_special_tokens(tensorizer.tokenizer, new_tokens)
+
+        if cfg.tmp_encoder_cp_name:
+            cp_state = torch.load(cfg.tmp_encoder_cp_name)
+            key_shift = len("bert.")
+            logger.info("Loading pre-trained reader weights from %s", cfg.tmp_encoder_cp_name)
+            cp_state = {k[key_shift:]: v for k, v in cp_state.items() if k.startswith("bert.")}
+            reader.load_state_dict(cp_state, strict=False)
         # -----------------------------------------------------------
 
         reader, optimizer = setup_for_distributed_mode(

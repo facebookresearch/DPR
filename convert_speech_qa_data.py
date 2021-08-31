@@ -28,7 +28,8 @@ def create_mlm_data(
     out_file: str,
     token_prefix: str = "w2v",
     max_positives: int = 5,
-    text_only: bool = False,
+    q2q: bool = False,
+    audio_only: bool = False,
 ):
     audio_file_prefix = "aud_dn_"
     orig_to_manifest_id_map = {}
@@ -71,15 +72,19 @@ def create_mlm_data(
     for orig_id, sample in enumerate(data):
         positive_ctxs = sample["positive_ctxs"][0:max_positives]
         manifest_id = orig_to_manifest_id_map[orig_id + 1]
-        logging.info("orig_id=%d manifest_id=%d", orig_id, manifest_id)
+        # logging.info("orig_id=%d manifest_id=%d", orig_id, manifest_id)
         km = kms[manifest_id]
         km_with_prefixes = ["[" + token_prefix + str(t) + "]" for t in km]
-        for ctx in positive_ctxs:
-            if text_only:
-                sample_line = ctx["title"] + ". " + ctx["text"] + "\n"
+        if q2q:
+            if audio_only:
+                sample_line = " ".join(km_with_prefixes) + "\n"
             else:
-                sample_line = " ".join(km_with_prefixes) + "[SEP]" + ctx["title"] + ". " + ctx["text"] + "\n"
+                sample_line = " ".join(km_with_prefixes) + "[SEP]" + sample["question"] + "\n"
             result.append(sample_line)
+        else:
+            for ctx in positive_ctxs:
+                sample_line = " ".join(km_with_prefixes) + "[SEP]" + ctx["title"] + ". " + ctx["text"] + "\n"
+                result.append(sample_line)
 
     # result=result[0:100]
     with open(out_file, "w") as ofile:
@@ -93,7 +98,8 @@ def create_mlm_paq_data(
     km_file: str,
     wav_root_dir: str,
     km_manifest_tsv_file: str,
-    samples_num: int,
+    sample_start: int,
+    samples_end: int,
     max_len: int,
     out_file: str,
     token_prefix: str = "w2v",
@@ -106,7 +112,9 @@ def create_mlm_paq_data(
     logger.info("Reading file %s" % jsonl_file)
     with jsonlines.open(jsonl_file, mode="r") as jsonl_reader:
         for i, r in enumerate(jsonl_reader):
-            if i > samples_num:
+            if i < sample_start:
+                continue
+            if i >= samples_end:
                 break
             data.append(r)
     logger.info("Aggregated data size: {}".format(len(data)))
@@ -332,13 +340,100 @@ def create_char_mlm_data_from_retriever_results(
     logging.info("Results saved to %s", out_file)
 
 
-if __name__ == "__main__":
+def main():
+
+    split = "dev"
+
+    """
+    create_mlm_data(
+        "/checkpoint/vladk/dpr_open_source/biencoder-nq-{}.json".format(split),
+        "/checkpoint/kushall/data/speechqa/nq/hubert_quantization_retriever/{split}.tsv".format(split=split),
+        "//checkpoint/kushall/data/speechqa/nq/hubert_clustering/layer6_km100/retriever/{split}_deduped_0_1.km".format(
+            split=split
+        ),
+        256,
+        "/checkpoint/vladk/speechqa/data/{split}/mlm-q2q-l256.txt".format(split=split),
+        q2q=True,
+    )
+
+    create_mlm_data(
+        "/checkpoint/vladk/dpr_open_source/biencoder-nq-{}.json".format(split),
+        "/checkpoint/kushall/data/speechqa/nq/hubert_quantization_retriever/{split}.tsv".format(split=split),
+        "//checkpoint/kushall/data/speechqa/nq/hubert_clustering/layer6_km100/retriever/{split}_deduped_0_1.km".format(
+            split=split
+        ),
+        256,
+        "/checkpoint/vladk/speechqa/data/{split}/mlm-qaudio-l256.txt".format(split=split),
+        q2q=True,
+        audio_only=True,
+    )
+    """
+
+    create_mlm_data(
+        "/checkpoint/vladk/dpr_open_source/biencoder-nq-{}.json".format(split),
+        "/checkpoint/kushall/data/speechqa/nq/hubert_quantization_retriever/{split}.tsv".format(split=split),
+        "//checkpoint/kushall/data/speechqa/nq/hubert_clustering/layer6_km100/retriever/{split}_deduped_0_1.km".format(
+            split=split
+        ),
+        256,
+        "/checkpoint/vladk/speechqa/data/{split}/mlm-q2ctx-l256.txt".format(split=split),
+        q2q=False,
+        max_positives=1,
+    )
+
+    """
+    
+    create_mlm_data_from_retriever_results(
+        "/checkpoint/vladk/dpr_open_source/nq_single_{}_dense_results.json".format(split),
+        "/checkpoint/vladk/speechqa/data/{}/all_wav/{}.tsv".format(split, split),
+        "/checkpoint/kushall/data/speechqa/nq/hubert_clustering/layer6_km100/reader/{}_deduped_0_1.km".format(split),
+        176,
+        "/checkpoint/vladk/speechqa/data/{}/base_retriever_results_{}.json".format(split, split),
+    )
+
+    split = "test"
+
+    create_mlm_data_from_retriever_results(
+        "/checkpoint/vladk/biencoder/validate_nq_audio_nq_speech_hf_nftnd_bsz16_80e_lr1e4_ol8_maxgrad10//nq_audio_{}.json".format(
+            split
+        ),
+        "/checkpoint/vladk/speechqa/data/{}/{}.tsv".format(split, split),
+        "/checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/retriever/{}_deduped_0_1.km".format(split),
+        176,
+        "/checkpoint/vladk/speechqa/data/{}/retriever_results_{}.json".format(split, split),
+    )
+
+    for split in ["dev", "train"]:
+        create_mlm_data_from_retriever_results(
+            "/checkpoint/vladk/biencoder/validate_nq_audio_nq_speech_hf_nftnd_bsz16_80e_lr1e4_ol8_maxgrad10//nq_audio_{}.json".format(
+                split
+            ),
+            "/checkpoint/vladk/speechqa/data/{}/all_wav/{}.tsv".format(split, split),
+            "/checkpoint/kushall/data/speechqa/hubert_clustering/layer6_km100/reader/{}_deduped_0_1.km".format(split),
+            176,
+            "/checkpoint/vladk/speechqa/data/{}/retriever_results_{}.json".format(split, split),
+        )
+        
     create_mlm_paq_data(
-        "/private/home/barlaso/data/paq/PAQ.dpr.train.jsonl",
+        "/checkpoint/vladk/speechqa/data/paq/train/PAQ.dpr.train.jsonl",
         "/checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt",
         "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.km",
         "/checkpoint/vladk/speechqa/data/paq/train/denoised_16k/",
         "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.tsv",
+        5000001,
+        5003001,
+        256,
+        "/checkpoint/vladk/speechqa/data/dev/paq5m.txt",
+        text_only=False,
+    )
+
+    create_mlm_paq_data(
+        "/checkpoint/vladk/speechqa/data/paq/train/PAQ.dpr.train.jsonl",
+        "/checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt",
+        "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.km",
+        "/checkpoint/vladk/speechqa/data/paq/train/denoised_16k/",
+        "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.tsv",
+        0,
         5000000,
         300,
         "/checkpoint/vladk/speechqa/data/train/paq5m_q2q.txt",
@@ -347,13 +442,19 @@ if __name__ == "__main__":
     )
 
     create_mlm_paq_data(
-        "/private/home/barlaso/data/paq/PAQ.dpr.train.jsonl",
+        "/checkpoint/vladk/speechqa/data/paq/train/PAQ.dpr.train.jsonl",
         "/checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt",
         "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.km",
         "/checkpoint/vladk/speechqa/data/paq/train/denoised_16k/",
         "/checkpoint/kushall/data/speechqa/paq/hubert_clustering/layer6_km100/reader/train.tsv",
+        0,
         5000000,
         256,
         "/checkpoint/vladk/speechqa/data/train/paq5m.txt",
         text_only=False,
     )
+    """
+
+
+if __name__ == "__main__":
+    main()

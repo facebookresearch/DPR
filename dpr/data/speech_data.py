@@ -139,6 +139,10 @@ class WavPAQTextDataset(JsonlQADataset):
         self.cut_samples = 0
 
     def load_data(self, start_pos: int = -1, end_pos: int = -1):
+        if start_pos == -1:
+            start_pos = 0
+            end_pos = self.total_data_size
+
         super().load_data(start_pos=start_pos, end_pos=end_pos)
         # make q->wav file mapping
         questions = set()

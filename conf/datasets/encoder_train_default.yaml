@@ -76,7 +76,7 @@ nq_speech_quantized_dev:
 
 paq_1m_speech_mixed_train:
   _target_: dpr.data.speech_data.WavPAQTextDataset
-  jsonl_file: /private/home/barlaso/data/paq/PAQ.dpr.train.jsonl
+  jsonl_file: /checkpoint/vladk/speechqa/data/paq/train/PAQ.dpr.train.jsonl
   manifest_txt_file: /checkpoint/kushall/data/speechqa/paq/PAQ.dpr.train_questions.txt
   wav_root_dir: /checkpoint/vladk/speechqa/data/paq/train/denoised_16k/
   normalize_audio: False

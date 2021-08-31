@@ -96,7 +96,7 @@ aidayago2_test:
 trex_dev:
   _target_: dpr.data.retriever_data.KiltCsvQASrc
   #file: /checkpoint/fabiopetroni/KILT/multitask_dpr_datasets/v0.20200817/trex-dev-multikilt.tsv
-  file: /checkpoint/vladk/dpr_open_source/ur/trex_dev-kilt.tsv
+  file: /checkpoint/vladk/dpr_open_source/ur/trex-dev-kilt.tsv
   kilt_gold_file: /checkpoint/fabiopetroni/KILT/datasets/trex-dev-kilt.jsonl
 
 trex_test:
