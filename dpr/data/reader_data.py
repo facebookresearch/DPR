@@ -24,7 +24,8 @@ from typing import Tuple, List, Dict, Iterable, Optional
 from torch import Tensor as T
 from tqdm import tqdm
 
-from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files
+from dpr.utils.data_utils import read_serialized_data_from_files
+from utils.data_utils import Tensorizer
 
 logger = logging.getLogger()
 

@@ -1,0 +1,13 @@
+encoder_model_type: coil
+
+model_name_or_path: /task_runtime/coil/hn-checkpoint
+cache_dir: ./cache
+tokenizer_name: bert-base-uncased
+cls_dim: 768
+token_dim: 32
+p_max_len: 128
+q_max_len: 16
+per_device_eval_batch_size: 128
+fp16: True
+
+output_dir: /task_runtime/coil/COIL/dense_output/

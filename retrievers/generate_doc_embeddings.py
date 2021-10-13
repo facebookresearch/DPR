@@ -81,7 +81,7 @@ def gen_ctx_vectors(
     return results
 
 
-@hydra.main(config_path="conf", config_name="gen_embs")
+@hydra.main(config_path="../conf", config_name="gen_embs")
 def main(cfg: DictConfig):
 
     assert cfg.model_file, "Please specify encoder checkpoint as model_file param"
@@ -95,7 +95,7 @@ def main(cfg: DictConfig):
     logger.info("CFG:")
     logger.info("%s", OmegaConf.to_yaml(cfg))
 
-    tensorizer, encoder, _ = init_biencoder_components(cfg.encoder.encoder_model_type, cfg, inference_only=True)
+    tensorizer, encoder, _ = init_biencoder_components(cfg.encoder.encoder_model_type, cfg, inference_only=True) # encoder is the bi-encoder model, which contains both context model and questions model
 
     encoder = encoder.ctx_model if cfg.encoder_type == "ctx" else encoder.question_model
 
@@ -127,6 +127,9 @@ def main(cfg: DictConfig):
     all_passages_dict = {}
     ctx_src.load_data_to(all_passages_dict)
     all_passages = [(k, v) for k, v in all_passages_dict.items()]
+    if cfg.max_passages and cfg.max_passages > 0:
+        all_passages = all_passages[:cfg.max_passages]
+        logger.info(f"Generate doc embeddings for {cfg.max_passages} passages")
 
     shard_size = math.ceil(len(all_passages) / cfg.num_shards)
     start_idx = cfg.shard_id * shard_size

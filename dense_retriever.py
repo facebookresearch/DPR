@@ -32,7 +32,7 @@ from dpr.indexer.faiss_indexers import (
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, _select_span_with_token
 from dpr.options import setup_logger, setup_cfg_gpu, set_cfg_params_from_state
-from dpr.utils.data_utils import Tensorizer
+from utils.data_utils import Tensorizer
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
     get_model_obj,
@@ -316,8 +316,9 @@ def main(cfg: DictConfig):
     qa_src = hydra.utils.instantiate(cfg.datasets[ds_key])
     qa_src.load_data()
 
-    for ds_item in qa_src.data:
+    for ds_item in qa_src.data[0:5]:
         question, answers = ds_item.query, ds_item.answers
+        print(f"Question: {question}")
         questions.append(question)
         question_answers.append(answers)
 
@@ -376,50 +377,51 @@ def main(cfg: DictConfig):
 
     # get top k results
     top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), cfg.n_docs)
-
+    print(top_ids_and_scores)
+    import pdb; pdb.set_trace()
     # we no longer need the index
     retriever = None
 
-    all_passages = {}
-    for ctx_src in ctx_sources:
-        ctx_src.load_data_to(all_passages)
-
-    if len(all_passages) == 0:
-        raise RuntimeError("No passages data found. Please specify ctx_file param properly.")
-
-    if cfg.validate_as_tables:
-        questions_doc_hits = validate_tables(
-            all_passages,
-            question_answers,
-            top_ids_and_scores,
-            cfg.validation_workers,
-            cfg.match,
-        )
-    else:
-        questions_doc_hits = validate(
-            all_passages,
-            question_answers,
-            top_ids_and_scores,
-            cfg.validation_workers,
-            cfg.match,
-        )
-
-    if cfg.out_file:
-        save_results(
-            all_passages,
-            questions,
-            question_answers,
-            top_ids_and_scores,
-            questions_doc_hits,
-            cfg.out_file,
-        )
-
-    if cfg.kilt_out_file:
-        kilt_ctx = next(iter([ctx for ctx in ctx_sources if isinstance(ctx, KiltCsvCtxSrc)]), None)
-        if not kilt_ctx:
-            raise RuntimeError("No Kilt compatible context file provided")
-        assert hasattr(cfg, "kilt_out_file")
-        kilt_ctx.convert_to_kilt(qa_src.kilt_gold_file, cfg.out_file, cfg.kilt_out_file)
+    # all_passages = {}
+    # for ctx_src in ctx_sources:
+    #     ctx_src.load_data_to(all_passages)
+    #
+    # if len(all_passages) == 0:
+    #     raise RuntimeError("No passages data found. Please specify ctx_file param properly.")
+    #
+    # if cfg.validate_as_tables:
+    #     questions_doc_hits = validate_tables(
+    #         all_passages,
+    #         question_answers,
+    #         top_ids_and_scores,
+    #         cfg.validation_workers,
+    #         cfg.match,
+    #     )
+    # else:
+    #     questions_doc_hits = validate(
+    #         all_passages,
+    #         question_answers,
+    #         top_ids_and_scores,
+    #         cfg.validation_workers,
+    #         cfg.match,
+    #     )
+    #
+    # if cfg.out_file:
+    #     save_results(
+    #         all_passages,
+    #         questions,
+    #         question_answers,
+    #         top_ids_and_scores,
+    #         questions_doc_hits,
+    #         cfg.out_file,
+    #     )
+    #
+    # if cfg.kilt_out_file:
+    #     kilt_ctx = next(iter([ctx for ctx in ctx_sources if isinstance(ctx, KiltCsvCtxSrc)]), None)
+    #     if not kilt_ctx:
+    #         raise RuntimeError("No Kilt compatible context file provided")
+    #     assert hasattr(cfg, "kilt_out_file")
+    #     kilt_ctx.convert_to_kilt(qa_src.kilt_gold_file, cfg.out_file, cfg.kilt_out_file)
 
 
 if __name__ == "__main__":

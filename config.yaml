@@ -1,0 +1,23 @@
+name: "MRQA Flow"
+command: 'echo "Hello"'
+resources:
+  docker_image: docker.apple.com/webanswers/autoverification:0.1.46
+  cluster: "simcloud-mr2.apple.com" # "simcloud-mr2.apple.com"  "apc_usmsc28"
+  group: "p6:ai:siri:webqa"
+  num_gpus: 1
+  num_cpus: 4
+  memory_gb: 260
+  disk_gb: 200
+  timeout: 13d
+cluster_options:
+  simcloud:
+    gpu_memory: 32GB
+
+permissions:
+  owners: WA-AV
+  viewers: WA-AV
+
+parameters:
+  datasets:
+    mydata:
+      bucket: "s3://web-answers/"

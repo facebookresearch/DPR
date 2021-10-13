@@ -36,9 +36,9 @@ from dpr.options import (
 from dpr.utils.conf_utils import BiencoderDatasetsCfg
 from dpr.utils.data_utils import (
     ShardedDataIterator,
-    Tensorizer,
     MultiSetDataIterator,
 )
+from utils.data_utils import Tensorizer
 from dpr.utils.dist_utils import all_gather_list
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,

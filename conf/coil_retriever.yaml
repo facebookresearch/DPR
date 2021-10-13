@@ -1,26 +1,23 @@
 defaults:
-  - encoder: hf_bert # defines encoder initialization parameters
+  - encoder: coil_encoder # defines encoder initialization parameters
   - datasets: retriever_default # contains a list of all possible sources of queries for evaluation. Specific set is selected by qa_dataset parameter
   - ctx_sources: default_sources # contains a list of all possible passage sources. Specific passages sources selected by ctx_datatsets parameter
 
+retriever: coil
+
 indexers:
   flat:
-    _target_: dpr.indexer.faiss_indexers.DenseFlatIndexer
+    _target_: coil.coil_retriever.COILIndex
+    shard_path: /task_runtime/coil/COIL/index
+    num_shard: 1
 
-  hnsw:
-    _target_: dpr.indexer.faiss_indexers.DenseHNSWFlatIndexer
+indexer: flat
 
-  hnsw_sq:
-    _target_: dpr.indexer.faiss_indexers.DenseHNSWSQIndexer
+encoded_ctx_files:
 
-# the name of the queries dataset from the 'datasets' config group
+doc_prefixes:
+
 qa_dataset:
-
-# a list of names of the passages datasets from the 'ctx_sources' config group
-ctx_datatsets:
-
-#Glob paths to encoded passages (from generate_dense_embeddings tool)
-encoded_ctx_files: []
 
 out_file:
 # "regex" or "string"
@@ -38,12 +35,6 @@ do_lower_case: True
 # question_model is used if this param is empty
 encoder_path:
 
-# path to the FAISS index location - it is only needed if you want to serialize faiss index to files or read from them
-# (instead of using encoded_ctx_files)
-# it should point to either directory or a common index files prefix name
-# if there is no index at the specific location, the index will be created from encoded_ctx_files
-index_path:
-
 kilt_out_file:
 
 # A trained bi-encoder checkpoint file to initialize the model
@@ -51,7 +42,6 @@ model_file:
 
 validate_as_tables: False
 rpc_retriever_cfg_file:
-indexer: flat
 
 # tokens which won't be slit by tokenizer
 special_tokens:
