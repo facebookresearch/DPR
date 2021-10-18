@@ -32,7 +32,7 @@ Their toolkit also reports higher BM25 and hybrid scores.
 4. Dense retriever component for inference time logic is based on FAISS index.
 
 ## New (March 2021) release
-DPR codeabse is upgraded with a number of enhancements and new models.
+DPR codebase is upgraded with a number of enhancements and new models.
 Major changes:
 1. [Hydra](https://hydra.cc/)-based configuration for all the command line tools exept the data loader (to be converted soon)
 2. Pluggable data processing layer to support custom datasets
