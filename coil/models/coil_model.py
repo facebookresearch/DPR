@@ -7,7 +7,13 @@ import torch.distributed as dist
 from torch import Tensor
 from torch import nn
 from torch.cuda.amp import autocast
-from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedTokenizer, Trainer
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoTokenizer,
+    PreTrainedTokenizer,
+    Trainer,
+)
 from transformers import PreTrainedModel, TrainingArguments
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 
@@ -19,12 +25,21 @@ setup_logger(logger)
 
 
 class COIL(nn.Module):
-    def __init__(self, model: PreTrainedModel, model_args, data_args,
-                 train_args: TrainingArguments):
+    def __init__(
+        self,
+        model: PreTrainedModel,
+        model_args,
+        data_args,
+        train_args: TrainingArguments,
+    ):
         super().__init__()
         self.model: PreTrainedModel = model
-        self.cross_entropy = nn.CrossEntropyLoss(reduction='mean')
-        self.data_args, self.model_args, self.train_args = data_args, model_args, train_args
+        self.cross_entropy = nn.CrossEntropyLoss(reduction="mean")
+        self.data_args, self.model_args, self.train_args = (
+            data_args,
+            model_args,
+            train_args,
+        )
         self.tok_proj = nn.Linear(768, model_args.token_dim)
         self.cls_proj = nn.Linear(768, model_args.cls_dim)
 
@@ -35,31 +50,35 @@ class COIL(nn.Module):
 
     @classmethod
     def from_pretrained(
-        cls, model_args, data_args, train_args: TrainingArguments,
-        *args, **kwargs
+        cls, model_args, data_args, train_args: TrainingArguments, *args, **kwargs
     ):
         hf_model = AutoModel.from_pretrained(*args, **kwargs)
         model = COIL(hf_model, model_args, data_args, train_args)
         path = args[0]
-        if os.path.exists(os.path.join(path, 'model.pt')):
-            logger.info('loading extra weights from local files')
-            model_dict = torch.load(os.path.join(path, 'model.pt'), map_location="cpu")
+        if os.path.exists(os.path.join(path, "model.pt")):
+            logger.info("loading extra weights from local files")
+            model_dict = torch.load(os.path.join(path, "model.pt"), map_location="cpu")
             model.load_state_dict(model_dict, strict=False)
         else:
-            logger.info('using pre-trained model without loading local checkpoint')
+            logger.info("using pre-trained model without loading local checkpoint")
         return model
 
     def save_pretrained(self, output_dir: str):
         self.model.save_pretrained(output_dir)
         model_dict = self.state_dict()
-        hf_weight_keys = [k for k in model_dict.keys() if k.startswith('model')]
+        hf_weight_keys = [k for k in model_dict.keys() if k.startswith("model")]
         for k in hf_weight_keys:
             model_dict.pop(k)
-        torch.save(model_dict, os.path.join(output_dir, 'model.pt'))
-        torch.save([self.data_args, self.model_args, self.train_args], os.path.join(output_dir, 'args.pt'))
+        torch.save(model_dict, os.path.join(output_dir, "model.pt"))
+        torch.save(
+            [self.data_args, self.model_args, self.train_args],
+            os.path.join(output_dir, "args.pt"),
+        )
 
     def encode(self, **features):
-        assert all([x in features for x in ['input_ids', 'attention_mask', 'token_type_ids']])
+        assert all(
+            [x in features for x in ["input_ids", "attention_mask", "token_type_ids"]]
+        )
         model_out: BaseModelOutputWithPooling = self.model(**features, return_dict=True)
         cls = self.cls_proj(model_out.last_hidden_state[:, 0])
         reps = self.tok_proj(model_out.last_hidden_state)
@@ -96,19 +115,19 @@ class COIL(nn.Module):
             doc_reps = torch.relu(doc_reps)
 
         # mask ingredients
-        doc_input_ids: Tensor = doc_input['input_ids']
-        qry_input_ids: Tensor = qry_input['input_ids']
-        qry_attention_mask: Tensor = qry_input['attention_mask']
+        doc_input_ids: Tensor = doc_input["input_ids"]
+        qry_input_ids: Tensor = qry_input["input_ids"]
+        qry_attention_mask: Tensor = qry_input["attention_mask"]
 
         self.mask_sep(qry_attention_mask)
 
         if not self.training:
             # in testing phase, we have Q == D
-            assert doc_input_ids.size(0) == qry_input_ids.size(0), \
-                'we expect same number of query/doc'
+            assert doc_input_ids.size(0) == qry_input_ids.size(
+                0
+            ), "we expect same number of query/doc"
             tok_scores = self.compute_tok_score_pair(
-                doc_reps, doc_input_ids,
-                qry_reps, qry_input_ids, qry_attention_mask
+                doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask
             )
 
             # compute cls score separately
@@ -136,15 +155,21 @@ class COIL(nn.Module):
                 # fake it as if everything is on current device
                 # gradient is taken care of at reduction time
                 doc_input_ids, doc_cls, doc_reps = self.gather_tensors(
-                    doc_input_ids, doc_cls, doc_reps)
-                qry_input_ids, qry_attention_mask, qry_cls, qry_reps = self.gather_tensors(
-                    qry_input_ids, qry_attention_mask, qry_cls, qry_reps)
+                    doc_input_ids, doc_cls, doc_reps
+                )
+                (
+                    qry_input_ids,
+                    qry_attention_mask,
+                    qry_cls,
+                    qry_reps,
+                ) = self.gather_tensors(
+                    qry_input_ids, qry_attention_mask, qry_cls, qry_reps
+                )
 
             # qry_reps: Q * LQ * d
             # doc_reps: D * LD * d
             tok_scores = self.compute_tok_score_cart(
-                doc_reps, doc_input_ids,
-                qry_reps, qry_input_ids, qry_attention_mask
+                doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask
             )
 
             # remove padding and cls token
@@ -158,9 +183,7 @@ class COIL(nn.Module):
                     scores = tok_scores.float() + cls_scores.float()  # Q * D
 
             labels = torch.arange(
-                scores.size(0),
-                device=doc_input['input_ids'].device,
-                dtype=torch.long
+                scores.size(0), device=doc_input["input_ids"].device, dtype=torch.long
             )
             # offset the labels
             labels = labels * self.data_args.train_group_size
@@ -170,42 +193,59 @@ class COIL(nn.Module):
 
     def mask_sep(self, qry_attention_mask):
         if self.model_args.no_sep:
-            sep_pos = qry_attention_mask.sum(1).unsqueeze(1) - 1  # the sep token position
+            sep_pos = (
+                qry_attention_mask.sum(1).unsqueeze(1) - 1
+            )  # the sep token position
             _zeros = torch.zeros_like(sep_pos)
             qry_attention_mask.scatter_(1, sep_pos.long(), _zeros)
 
         return qry_attention_mask
 
-    def compute_tok_score_pair(self, doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask):
-        exact_match = qry_input_ids.unsqueeze(2) == doc_input_ids.unsqueeze(1)  # B * LQ * LD
+    def compute_tok_score_pair(
+        self, doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask
+    ):
+        exact_match = qry_input_ids.unsqueeze(2) == doc_input_ids.unsqueeze(
+            1
+        )  # B * LQ * LD
         exact_match = exact_match.float()
         # qry_reps: B * LQ * d
         # doc_reps: B * LD * d
-        scores_no_masking = torch.bmm(qry_reps, doc_reps.permute(0, 2, 1))  # B * LQ * LD
-        if self.model_args.pooling == 'max':
+        scores_no_masking = torch.bmm(
+            qry_reps, doc_reps.permute(0, 2, 1)
+        )  # B * LQ * LD
+        if self.model_args.pooling == "max":
             tok_scores, _ = (scores_no_masking * exact_match).max(dim=2)  # B * LQ
         else:
-            raise NotImplementedError(f'{self.model_args.pooling} pooling is not defined')
+            raise NotImplementedError(
+                f"{self.model_args.pooling} pooling is not defined"
+            )
         # remove padding and cls token
         tok_scores = (tok_scores * qry_attention_mask)[:, 1:].sum(-1)
         return tok_scores
 
-    def compute_tok_score_cart(self, doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask):
+    def compute_tok_score_cart(
+        self, doc_reps, doc_input_ids, qry_reps, qry_input_ids, qry_attention_mask
+    ):
         qry_input_ids = qry_input_ids.unsqueeze(2).unsqueeze(3)  # Q * LQ * 1 * 1
         doc_input_ids = doc_input_ids.unsqueeze(0).unsqueeze(1)  # 1 * 1 * D * LD
         exact_match = doc_input_ids == qry_input_ids  # Q * LQ * D * LD
         exact_match = exact_match.float()
         scores_no_masking = torch.matmul(
             qry_reps.view(-1, self.model_args.token_dim),  # (Q * LQ) * d
-            doc_reps.view(-1, self.model_args.token_dim).transpose(0, 1)  # d * (D * LD)
+            doc_reps.view(-1, self.model_args.token_dim).transpose(
+                0, 1
+            ),  # d * (D * LD)
         )
         scores_no_masking = scores_no_masking.view(
-            *qry_reps.shape[:2], *doc_reps.shape[:2])  # Q * LQ * D * LD
+            *qry_reps.shape[:2], *doc_reps.shape[:2]
+        )  # Q * LQ * D * LD
         # scores_no_masking = scores_no_masking.permute(0, 2, 1, 3)  # Q * D * LQ * LD
-        if self.model_args.pooling == 'max':
+        if self.model_args.pooling == "max":
             scores, _ = (scores_no_masking * exact_match).max(dim=3)  # Q * LQ * D
         else:
-            raise NotImplementedError(f'{self.model_args.pooling} pooling is not defined')
+            raise NotImplementedError(
+                f"{self.model_args.pooling} pooling is not defined"
+            )
 
         tok_scores = (scores * qry_attention_mask.unsqueeze(2))[:, 1:].sum(1)
         return tok_scores
@@ -222,7 +262,9 @@ class COIL(nn.Module):
 
 
 class COILTensorizer(Tensorizer):
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int, pad_to_max: bool = False):
+    def __init__(
+        self, tokenizer: PreTrainedTokenizer, max_length: int, pad_to_max: bool = False
+    ):
         super().__init__(tokenizer, max_length, pad_to_max)
 
     def tokenize(
@@ -238,7 +280,7 @@ class COILTensorizer(Tensorizer):
         return self.tokenizer.encode_plus(
             text,
             max_length=self.max_length,
-            truncation='only_first',
+            truncation="only_first",
             pad_to_max_length=self.pad_to_max,
         )
 
@@ -263,13 +305,17 @@ def get_coil_question_encoder_components(args, inference_only: bool = False, **k
     tensorizer = COILTensorizer(tokenizer=tokenizer, max_length=data_args.q_max_len)
 
     config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        model_args.config_name
+        if model_args.config_name
+        else model_args.model_name_or_path,
         num_labels=1,
         cache_dir=model_args.cache_dir,
     )
 
     model = COIL.from_pretrained(
-        model_args, data_args, training_args,
+        model_args,
+        data_args,
+        training_args,
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         config=config,

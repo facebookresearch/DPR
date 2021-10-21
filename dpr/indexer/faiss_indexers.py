@@ -35,7 +35,9 @@ class DenseIndexer(object):
     def get_index_name(self):
         raise NotImplementedError
 
-    def search_knn(self, query_vectors: np.array, top_docs: int) -> List[Tuple[List[object], List[float]]]:
+    def search_knn(
+        self, query_vectors: np.array, top_docs: int
+    ) -> List[Tuple[List[object], List[float]]]:
         raise NotImplementedError
 
     def serialize(self, file: str):
@@ -70,7 +72,9 @@ class DenseIndexer(object):
         index_file, meta_file = self.get_files(path)
 
         self.index = faiss.read_index(index_file)
-        logger.info("Loaded index of type %s and size %d", type(self.index), self.index.ntotal)
+        logger.info(
+            "Loaded index of type %s and size %d", type(self.index), self.index.ntotal
+        )
 
         with open(meta_file, "rb") as reader:
             self.index_id_to_db_id = pickle.load(reader)
@@ -95,7 +99,9 @@ class DenseFlatIndexer(DenseIndexer):
         # indexing in batches is beneficial for many faiss index types
         for i in range(0, n, self.buffer_size):
             db_ids = [t[0] for t in data[i : i + self.buffer_size]]
-            vectors = [np.reshape(t[1], (1, -1)) for t in data[i : i + self.buffer_size]]
+            vectors = [
+                np.reshape(t[1], (1, -1)) for t in data[i : i + self.buffer_size]
+            ]
             vectors = np.concatenate(vectors, axis=0)
             total_data = self._update_id_mapping(db_ids)
             self.index.add(vectors)
@@ -104,10 +110,15 @@ class DenseFlatIndexer(DenseIndexer):
         indexed_cnt = len(self.index_id_to_db_id)
         logger.info("Total data indexed %d", indexed_cnt)
 
-    def search_knn(self, query_vectors: np.array, top_docs: int) -> List[Tuple[List[object], List[float]]]:
+    def search_knn(
+        self, query_vectors: np.array, top_docs: int
+    ) -> List[Tuple[List[object], List[float]]]:
         scores, indexes = self.index.search(query_vectors, top_docs)
         # convert to external ids
-        db_ids = [[self.index_id_to_db_id[i] for i in query_top_idxs] for query_top_idxs in indexes]
+        db_ids = [
+            [self.index_id_to_db_id[i] for i in query_top_idxs]
+            for query_top_idxs in indexes
+        ]
         result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
         return result
 
@@ -147,7 +158,8 @@ class DenseHNSWFlatIndexer(DenseIndexer):
         # max norm is required before putting all vectors in the index to convert inner product similarity to L2
         if self.phi > 0:
             raise RuntimeError(
-                "DPR HNSWF index needs to index all data at once," "results will be unpredictable otherwise."
+                "DPR HNSWF index needs to index all data at once,"
+                "results will be unpredictable otherwise."
             )
         phi = 0
         for i, item in enumerate(data):
@@ -165,7 +177,10 @@ class DenseHNSWFlatIndexer(DenseIndexer):
 
             norms = [(doc_vector ** 2).sum() for doc_vector in vectors]
             aux_dims = [np.sqrt(phi - norm) for norm in norms]
-            hnsw_vectors = [np.hstack((doc_vector, aux_dims[i].reshape(-1, 1))) for i, doc_vector in enumerate(vectors)]
+            hnsw_vectors = [
+                np.hstack((doc_vector, aux_dims[i].reshape(-1, 1)))
+                for i, doc_vector in enumerate(vectors)
+            ]
             hnsw_vectors = np.concatenate(hnsw_vectors, axis=0)
             self.train(hnsw_vectors)
 
@@ -178,14 +193,19 @@ class DenseHNSWFlatIndexer(DenseIndexer):
     def train(self, vectors: np.array):
         pass
 
-    def search_knn(self, query_vectors: np.array, top_docs: int) -> List[Tuple[List[object], List[float]]]:
+    def search_knn(
+        self, query_vectors: np.array, top_docs: int
+    ) -> List[Tuple[List[object], List[float]]]:
 
         aux_dim = np.zeros(len(query_vectors), dtype="float32")
         query_nhsw_vectors = np.hstack((query_vectors, aux_dim.reshape(-1, 1)))
         logger.info("query_hnsw_vectors %s", query_nhsw_vectors.shape)
         scores, indexes = self.index.search(query_nhsw_vectors, top_docs)
         # convert to external ids
-        db_ids = [[self.index_id_to_db_id[i] for i in query_top_idxs] for query_top_idxs in indexes]
+        db_ids = [
+            [self.index_id_to_db_id[i] for i in query_top_idxs]
+            for query_top_idxs in indexes
+        ]
         result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
         return result
 
@@ -220,7 +240,9 @@ class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
     def init_index(self, vector_sz: int):
         # IndexHNSWFlat supports L2 similarity only
         # so we have to apply DOT -> L2 similairy space conversion with the help of an extra dimension
-        index = faiss.IndexHNSWSQ(vector_sz + 1, faiss.ScalarQuantizer.QT_8bit, self.store_n)
+        index = faiss.IndexHNSWSQ(
+            vector_sz + 1, faiss.ScalarQuantizer.QT_8bit, self.store_n
+        )
         index.hnsw.efSearch = self.ef_search
         index.hnsw.efConstruction = self.ef_construction
         self.index = index

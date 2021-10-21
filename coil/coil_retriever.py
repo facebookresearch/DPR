@@ -16,17 +16,13 @@ try:
     from coil.retriever_ext import scatter as c_scatter
 except ImportError:
     raise ImportError(
-        'Cannot import scatter module.'
-        ' Make sure you have compiled the retriever extension.'
+        "Cannot import scatter module."
+        " Make sure you have compiled the retriever extension."
     )
 
 COILQuestionRepresentations = namedtuple(
     "COILQuestionRepresentations",
-    [
-        "tok_reps",
-        "offsets",
-        "cls_reps"
-    ],
+    ["tok_reps", "offsets", "cls_reps"],
 )
 
 COILIndexShard = namedtuple(
@@ -36,7 +32,7 @@ COILIndexShard = namedtuple(
         "all_shard_scatter_maps",
         "doc_cls_reps",
         "cls_ex_ids",
-        "tok_id_2_reps"
+        "tok_id_2_reps",
     ],
 )
 
@@ -72,32 +68,45 @@ class COILIndex:
             self.shard_paths.extend(vector_files)
 
         for doc_shard in self.shard_paths:
-            all_ivl_scatter_maps = torch.load(os.path.join(doc_shard, 'ivl_scatter_maps.pt'))
-            all_shard_scatter_maps = torch.load(os.path.join(doc_shard, 'shard_scatter_maps.pt'))
-            tok_id_2_reps = torch.load(os.path.join(doc_shard, 'tok_reps.pt'))
-            doc_cls_reps = torch.load(os.path.join(doc_shard, 'cls_reps.pt')).float()
-            cls_ex_ids = torch.load(os.path.join(doc_shard, 'cls_ex_ids.pt'))
+            all_ivl_scatter_maps = torch.load(
+                os.path.join(doc_shard, "ivl_scatter_maps.pt")
+            )
+            all_shard_scatter_maps = torch.load(
+                os.path.join(doc_shard, "shard_scatter_maps.pt")
+            )
+            tok_id_2_reps = torch.load(os.path.join(doc_shard, "tok_reps.pt"))
+            doc_cls_reps = torch.load(os.path.join(doc_shard, "cls_reps.pt")).float()
+            cls_ex_ids = torch.load(os.path.join(doc_shard, "cls_ex_ids.pt"))
             tok_id_2_reps = COILIndex.dict_2_float(tok_id_2_reps)
 
-            self.shard_indexes.append(COILIndexShard(
-                all_ivl_scatter_maps=all_ivl_scatter_maps,
-                all_shard_scatter_maps=all_shard_scatter_maps,
-                doc_cls_reps=doc_cls_reps,
-                cls_ex_ids=cls_ex_ids,
-                tok_id_2_reps=tok_id_2_reps,
-            ))
+            self.shard_indexes.append(
+                COILIndexShard(
+                    all_ivl_scatter_maps=all_ivl_scatter_maps,
+                    all_shard_scatter_maps=all_shard_scatter_maps,
+                    doc_cls_reps=doc_cls_reps,
+                    cls_ex_ids=cls_ex_ids,
+                    tok_id_2_reps=tok_id_2_reps,
+                )
+            )
 
-    def search_top_k(self, question_vector: COILQuestionRepresentations, top_docs: int = 1000):
+    def search_top_k(
+        self, question_vector: COILQuestionRepresentations, top_docs: int = 1000
+    ):
         all_results = []
         for index in self.shard_indexes:
-            all_results.extend(self.search_top_k_from_shard(question_vector, index, top_docs))
+            all_results.extend(
+                self.search_top_k_from_shard(question_vector, index, top_docs)
+            )
 
         sorted_results = sorted(all_results, key=lambda x: x[1], reverse=True)
         return sorted_results[:top_docs]
 
-
-    def search_top_k_from_shard(self, question_vector: COILQuestionRepresentations, index_shard: COILIndexShard,
-                                top_docs: int = 100) -> List[Tuple[List[object], List[float]]]:
+    def search_top_k_from_shard(
+        self,
+        question_vector: COILQuestionRepresentations,
+        index_shard: COILIndexShard,
+        top_docs: int = 100,
+    ) -> List[Tuple[List[object], List[float]]]:
         """
         Searches query in one particular index shard
         Args:
@@ -117,7 +126,9 @@ class COILIndex:
         all_ivl_scatter_maps = index_shard.all_ivl_scatter_maps
         all_shard_scatter_maps = index_shard.all_shard_scatter_maps
 
-        match_scores = torch.matmul(query_cls_reps.float(), doc_cls_reps.transpose(0, 1))  # D * b
+        match_scores = torch.matmul(
+            query_cls_reps.float(), doc_cls_reps.transpose(0, 1)
+        )  # D * b
 
         batched_qtok_offsets = defaultdict(list)
         q_batch_offsets = defaultdict(list)
@@ -135,7 +146,9 @@ class COILIndex:
         for q_tok_id in batch_qtok_ids:
             q_tok_reps = query_tok_reps[batched_qtok_offsets[q_tok_id]]
             tok_reps = tok_id_2_reps[q_tok_id]
-            tok_scores = torch.matmul(q_tok_reps.float(), tok_reps.transpose(0, 1)).relu_()  # Bt * Ds
+            tok_scores = torch.matmul(
+                q_tok_reps.float(), tok_reps.transpose(0, 1)
+            ).relu_()  # Bt * Ds
             batched_tok_scores.append(tok_scores)
 
         for i, q_tok_id in enumerate(batch_qtok_ids):
@@ -148,7 +161,10 @@ class COILIndex:
             for j in range(tok_scores.size(0)):
                 ivl_maxed_scores.zero_()
                 c_scatter.scatter_max(
-                    tok_scores[j].numpy(), ivl_scatter_map.numpy(), ivl_maxed_scores.numpy())
+                    tok_scores[j].numpy(),
+                    ivl_scatter_map.numpy(),
+                    ivl_maxed_scores.numpy(),
+                )
                 boff = q_batch_offsets[q_tok_id][j]
                 match_scores[boff].scatter_add_(0, shard_scatter_map, ivl_maxed_scores)
 
@@ -172,7 +188,7 @@ class COILDenseRetriever(DenseRetriever):
         query_offsets = defaultdict(list)
         for tok_id in offset:
             start, n_tok = offset[tok_id]
-            for off, qid in enumerate(query_ids[start: start + n_tok]):
+            for off, qid in enumerate(query_ids[start : start + n_tok]):
                 query_offsets[qid].append((tok_id, start + off))
         return dict(query_offsets)
 
@@ -184,21 +200,23 @@ class COILDenseRetriever(DenseRetriever):
             collate_fn=DataCollatorWithPadding(
                 self.tensorizer.tokenizer,
                 max_length=self.tensorizer.max_length,
-                padding='max_length'
+                padding="max_length",
             ),
             shuffle=False,
             drop_last=False,
             num_workers=10,
         )
 
-    def generate_question_vectors(self, questions: List[str], query_token: str = None) -> COILQuestionRepresentations:
+    def generate_question_vectors(
+        self, questions: List[str], query_token: str = None
+    ) -> COILQuestionRepresentations:
         questions_tokens = []
         encoded = []
         data_loader = self._get_data_loader(questions)
         for batch in data_loader:
             with torch.cuda.amp.autocast():
                 with torch.no_grad():
-                    questions_tokens.extend(batch['input_ids'])
+                    questions_tokens.extend(batch["input_ids"])
                     for k, v in batch.items():
                         batch[k] = v.to(self.device)
                     cls, reps = self.question_encoder.encode(**batch)
@@ -269,7 +287,9 @@ class COILDenseRetriever(DenseRetriever):
 
         del reps_by_query
 
-        return COILQuestionRepresentations(tok_reps=tok_reps, offsets=offsets, cls_reps=cls_reps)
+        return COILQuestionRepresentations(
+            tok_reps=tok_reps, offsets=offsets, cls_reps=cls_reps
+        )
 
     def load_encoded_index_data(
         self,
@@ -279,7 +299,8 @@ class COILDenseRetriever(DenseRetriever):
     ):
         self.index.load_shards_into_index(vector_files)
 
-    def get_top_docs(self, query_vectors: COILQuestionRepresentations, top_docs: int = 100) -> List[
-        Tuple[List[object], List[float]]]:
+    def get_top_docs(
+        self, query_vectors: COILQuestionRepresentations, top_docs: int = 100
+    ) -> List[Tuple[List[object], List[float]]]:
         ## TODO: optimize searching from all shards
         return self.index.search_top_k(query_vectors, top_docs)

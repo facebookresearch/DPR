@@ -13,7 +13,9 @@ import logging
 from typing import Tuple
 
 import torch
-from pytext.models.representations.transformer_sentence_encoder import TransformerSentenceEncoder
+from pytext.models.representations.transformer_sentence_encoder import (
+    TransformerSentenceEncoder,
+)
 from pytext.optimizer.optimizers import AdamW
 from torch import Tensor as T
 from torch import nn
@@ -27,33 +29,49 @@ def get_bert_biencoder_components(args, inference_only: bool = False):
     # since bert tokenizer is the same in HF and pytext/fairseq, just use HF's implementation here for now
     from .hf_models import get_tokenizer, BertTensorizer
 
-    tokenizer = get_tokenizer(args.pretrained_model_cfg, do_lower_case=args.do_lower_case)
+    tokenizer = get_tokenizer(
+        args.pretrained_model_cfg, do_lower_case=args.do_lower_case
+    )
 
-    question_encoder = PytextBertEncoder.init_encoder(args.pretrained_file,
-                                                      projection_dim=args.projection_dim, dropout=args.dropout,
-                                                      vocab_size=tokenizer.vocab_size,
-                                                      padding_idx=tokenizer.pad_token_type_id
-                                                      )
+    question_encoder = PytextBertEncoder.init_encoder(
+        args.pretrained_file,
+        projection_dim=args.projection_dim,
+        dropout=args.dropout,
+        vocab_size=tokenizer.vocab_size,
+        padding_idx=tokenizer.pad_token_type_id,
+    )
 
-    ctx_encoder = PytextBertEncoder.init_encoder(args.pretrained_file,
-                                                 projection_dim=args.projection_dim, dropout=args.dropout,
-                                                 vocab_size=tokenizer.vocab_size,
-                                                 padding_idx=tokenizer.pad_token_type_id
-                                                 )
+    ctx_encoder = PytextBertEncoder.init_encoder(
+        args.pretrained_file,
+        projection_dim=args.projection_dim,
+        dropout=args.dropout,
+        vocab_size=tokenizer.vocab_size,
+        padding_idx=tokenizer.pad_token_type_id,
+    )
 
     biencoder = BiEncoder(question_encoder, ctx_encoder)
 
-    optimizer = get_optimizer(biencoder,
-                              learning_rate=args.learning_rate,
-                              adam_eps=args.adam_eps, weight_decay=args.weight_decay,
-                              ) if not inference_only else None
+    optimizer = (
+        get_optimizer(
+            biencoder,
+            learning_rate=args.learning_rate,
+            adam_eps=args.adam_eps,
+            weight_decay=args.weight_decay,
+        )
+        if not inference_only
+        else None
+    )
 
     tensorizer = BertTensorizer(tokenizer, args.sequence_length)
     return tensorizer, biencoder, optimizer
 
 
-def get_optimizer(model: nn.Module, learning_rate: float = 1e-5, adam_eps: float = 1e-8,
-                  weight_decay: float = 0.0) -> torch.optim.Optimizer:
+def get_optimizer(
+    model: nn.Module,
+    learning_rate: float = 1e-5,
+    adam_eps: float = 1e-8,
+    weight_decay: float = 0.0,
+) -> torch.optim.Optimizer:
     cfg = AdamW.Config()
     cfg.lr = learning_rate
     cfg.weight_decay = weight_decay
@@ -84,24 +102,37 @@ def get_pytext_bert_base_cfg():
 
 
 class PytextBertEncoder(TransformerSentenceEncoder):
+    def __init__(
+        self,
+        config: TransformerSentenceEncoder.Config,
+        padding_idx: int,
+        vocab_size: int,
+        projection_dim: int = 0,
+        *args,
+        **kwarg
+    ):
 
-    def __init__(self, config: TransformerSentenceEncoder.Config,
-                 padding_idx: int,
-                 vocab_size: int,
-                 projection_dim: int = 0,
-                 *args,
-                 **kwarg
-                 ):
+        TransformerSentenceEncoder.__init__(
+            self, config, False, padding_idx, vocab_size, *args, **kwarg
+        )
 
-        TransformerSentenceEncoder.__init__(self, config, False, padding_idx, vocab_size, *args, **kwarg)
-
-        assert config.embedding_dim > 0, 'Encoder hidden_size can\'t be zero'
-        self.encode_proj = nn.Linear(config.embedding_dim, projection_dim) if projection_dim != 0 else None
+        assert config.embedding_dim > 0, "Encoder hidden_size can't be zero"
+        self.encode_proj = (
+            nn.Linear(config.embedding_dim, projection_dim)
+            if projection_dim != 0
+            else None
+        )
 
     @classmethod
-    def init_encoder(cls, pretrained_file: str = None, projection_dim: int = 0, dropout: float = 0.1,
-                     vocab_size: int = 0,
-                     padding_idx: int = 0, **kwargs):
+    def init_encoder(
+        cls,
+        pretrained_file: str = None,
+        projection_dim: int = 0,
+        dropout: float = 0.1,
+        vocab_size: int = 0,
+        padding_idx: int = 0,
+        **kwargs
+    ):
         cfg = get_pytext_bert_base_cfg()
 
         if dropout != 0:
@@ -112,13 +143,19 @@ class PytextBertEncoder(TransformerSentenceEncoder):
         encoder = cls(cfg, padding_idx, vocab_size, projection_dim, **kwargs)
 
         if pretrained_file:
-            logger.info('Loading pre-trained pytext encoder state from %s', pretrained_file)
+            logger.info(
+                "Loading pre-trained pytext encoder state from %s", pretrained_file
+            )
             state = torch.load(pretrained_file)
             encoder.load_state_dict(state)
         return encoder
 
-    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T) -> Tuple[T, ...]:
-        pooled_output = super().forward((input_ids, attention_mask, token_type_ids, None))[0]
+    def forward(
+        self, input_ids: T, token_type_ids: T, attention_mask: T
+    ) -> Tuple[T, ...]:
+        pooled_output = super().forward(
+            (input_ids, attention_mask, token_type_ids, None)
+        )[0]
         if self.encode_proj:
             pooled_output = self.encode_proj(pooled_output)
 

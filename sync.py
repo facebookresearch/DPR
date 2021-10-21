@@ -54,9 +54,9 @@ def get_upload_command(command_args: Dict[str, str], task: bolt.Task) -> str:
             "%s/.turibolt/ssh_config.*" % (os.path.expanduser("~"))
         )
 
-        newest_ssh_config = sorted(
-            available_ssh_config_list, key=_ssh_config_version
-        )[-1]
+        newest_ssh_config = sorted(available_ssh_config_list, key=_ssh_config_version)[
+            -1
+        ]
         cluster_name = task.resources.cluster.replace("apc_", "")
         return (
             'rsync -Pauv -e "ssh -i {bolt_config_dir}/bolt_ssh_key '
@@ -74,9 +74,7 @@ def get_upload_command(command_args: Dict[str, str], task: bolt.Task) -> str:
 def _ssh_config_version(ssh_config_name):
     version_str = ssh_config_name.rsplit(".", maxsplit=1)[-1]
     if version_str[0] != "v":
-        raise ValueError(
-            "Invalid SSH config name: {}".format(ssh_config_name)
-        )
+        raise ValueError("Invalid SSH config name: {}".format(ssh_config_name))
     return int(version_str[1:])
 
 
@@ -97,7 +95,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Run sync once and stop. " "If set, the usual upload will complete and stop.",
+        help="Run sync once and stop. "
+        "If set, the usual upload will complete and stop.",
     )
     args = parser.parse_args()
 
@@ -128,13 +127,15 @@ if __name__ == "__main__":
             subprocess.Popen("/Applications/AnyBar.app/Contents/MacOS/AnyBar")
 
             anybar_port = os.getenv("ANYBAR_PORT", "1738")
-            anybar_command = ("printf {{color}} | " "nc -4u -w0 localhost {port}").format(
-                port=anybar_port
-            )
+            anybar_command = (
+                "printf {{color}} | " "nc -4u -w0 localhost {port}"
+            ).format(port=anybar_port)
             start_command = anybar_command.format(color="orange")
             done_command = anybar_command.format(color="green")
 
-            upload_command = ("{start_command}; {upload_command} && " "{done_command};").format(
+            upload_command = (
+                "{start_command}; {upload_command} && " "{done_command};"
+            ).format(
                 start_command=start_command,
                 upload_command=upload_command,
                 done_command=done_command,
@@ -149,7 +150,10 @@ if __name__ == "__main__":
             watch_command = (
                 'fswatch -or0 -l 0.2 --exclude ".\*.git.\*" {local_dir} | '
                 'xargs -0 -n 1 bash -c "{upload_command}";'
-            ).format(local_dir=args.local_dir, upload_command=upload_command.replace('"', '\\"'))
+            ).format(
+                local_dir=args.local_dir,
+                upload_command=upload_command.replace('"', '\\"'),
+            )
             print(watch_command)
             subprocess.Popen(watch_command, shell=True).wait()
         except:

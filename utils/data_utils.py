@@ -7,7 +7,9 @@ class Tensorizer(object):
     Component for all text to model input data conversions and related utility methods
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int, pad_to_max: bool = False):
+    def __init__(
+        self, tokenizer: PreTrainedTokenizer, max_length: int, pad_to_max: bool = False
+    ):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.pad_to_max = pad_to_max

@@ -46,7 +46,9 @@ def get_bert_biencoder_components(cfg, inference_only: bool = False, **kwargs):
 
     fix_ctx_encoder = cfg.fix_ctx_encoder if hasattr(cfg, "fix_ctx_encoder") else False
 
-    biencoder = BiEncoder(question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder)
+    biencoder = BiEncoder(
+        question_encoder, ctx_encoder, fix_ctx_encoder=fix_ctx_encoder
+    )
 
     optimizer = (
         get_optimizer(
@@ -96,7 +98,9 @@ def get_bert_tensorizer(cfg, tokenizer=None):
     pretrained_model_cfg = cfg.encoder.pretrained_model_cfg
 
     if not tokenizer:
-        tokenizer = get_bert_tokenizer(pretrained_model_cfg, do_lower_case=cfg.do_lower_case)
+        tokenizer = get_bert_tokenizer(
+            pretrained_model_cfg, do_lower_case=cfg.do_lower_case
+        )
         if cfg.special_tokens:
             _add_special_tokens(tokenizer, cfg.special_tokens)
 
@@ -108,7 +112,9 @@ def _add_special_tokens(tokenizer, special_tokens):
     special_tokens_num = len(special_tokens)
     # TODO: this is a hack-y logic that uses some private tokenizer structure which can be changed in HF code
     assert special_tokens_num < 50
-    unused_ids = [tokenizer.vocab["[unused{}]".format(i)] for i in range(special_tokens_num)]
+    unused_ids = [
+        tokenizer.vocab["[unused{}]".format(i)] for i in range(special_tokens_num)
+    ]
     logger.info("Utilizing the following unused token ids %s", unused_ids)
 
     for idx, id in enumerate(unused_ids):
@@ -126,7 +132,9 @@ def _add_special_tokens(tokenizer, special_tokens):
 
 def get_roberta_tensorizer(args, tokenizer=None):
     if not tokenizer:
-        tokenizer = get_roberta_tokenizer(args.pretrained_model_cfg, do_lower_case=args.do_lower_case)
+        tokenizer = get_roberta_tokenizer(
+            args.pretrained_model_cfg, do_lower_case=args.do_lower_case
+        )
     return RobertaTensorizer(tokenizer, args.sequence_length)
 
 
@@ -140,11 +148,19 @@ def get_optimizer(
 
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if not any(nd in n for nd in no_decay)
+            ],
             "weight_decay": weight_decay,
         },
         {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if any(nd in n for nd in no_decay)
+            ],
             "weight_decay": 0.0,
         },
     ]
@@ -153,24 +169,35 @@ def get_optimizer(
 
 
 def get_bert_tokenizer(pretrained_cfg_name: str, do_lower_case: bool = True):
-    return BertTokenizer.from_pretrained(pretrained_cfg_name, do_lower_case=do_lower_case)
+    return BertTokenizer.from_pretrained(
+        pretrained_cfg_name, do_lower_case=do_lower_case
+    )
 
 
 def get_roberta_tokenizer(pretrained_cfg_name: str, do_lower_case: bool = True):
     # still uses HF code for tokenizer since they are the same
-    return RobertaTokenizer.from_pretrained(pretrained_cfg_name, do_lower_case=do_lower_case)
+    return RobertaTokenizer.from_pretrained(
+        pretrained_cfg_name, do_lower_case=do_lower_case
+    )
 
 
 class HFBertEncoder(BertModel):
     def __init__(self, config, project_dim: int = 0):
         BertModel.__init__(self, config)
         assert config.hidden_size > 0, "Encoder hidden_size can't be zero"
-        self.encode_proj = nn.Linear(config.hidden_size, project_dim) if project_dim != 0 else None
+        self.encode_proj = (
+            nn.Linear(config.hidden_size, project_dim) if project_dim != 0 else None
+        )
         self.init_weights()
 
     @classmethod
     def init_encoder(
-        cls, cfg_name: str, projection_dim: int = 0, dropout: float = 0.1, pretrained: bool = True, **kwargs
+        cls,
+        cfg_name: str,
+        projection_dim: int = 0,
+        dropout: float = 0.1,
+        pretrained: bool = True,
+        **kwargs
     ) -> BertModel:
         cfg = BertConfig.from_pretrained(cfg_name if cfg_name else "bert-base-uncased")
         if dropout != 0:
@@ -178,7 +205,9 @@ class HFBertEncoder(BertModel):
             cfg.hidden_dropout_prob = dropout
 
         if pretrained:
-            return cls.from_pretrained(cfg_name, config=cfg, project_dim=projection_dim, **kwargs)
+            return cls.from_pretrained(
+                cfg_name, config=cfg, project_dim=projection_dim, **kwargs
+            )
         else:
             return HFBertEncoder(cfg, project_dim=projection_dim)
 
@@ -190,7 +219,11 @@ class HFBertEncoder(BertModel):
         representation_token_pos=0,
     ) -> Tuple[T, ...]:
 
-        output = super().forward(input_ids=input_ids,token_type_ids=token_type_ids,attention_mask=attention_mask,)
+        output = super().forward(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            attention_mask=attention_mask,
+        )
         sequence_output = output.last_hidden_state
         ## bert model from transformers 4.11.3 has pooler output, but this is trained on 3.0.2, so use the same vector location as before
         pooled_output = sequence_output[:, representation_token_pos, :]
@@ -207,7 +240,9 @@ class HFBertEncoder(BertModel):
 
 
 class BertTensorizer(Tensorizer):
-    def __init__(self, tokenizer: BertTokenizer, max_length: int, pad_to_max: bool = True):
+    def __init__(
+        self, tokenizer: BertTokenizer, max_length: int, pad_to_max: bool = True
+    ):
         super().__init__(tokenizer, max_length, pad_to_max)
 
     def text_to_tensor(
@@ -241,7 +276,9 @@ class BertTensorizer(Tensorizer):
 
         seq_len = self.max_length
         if self.pad_to_max and len(token_ids) < seq_len:
-            token_ids = token_ids + [self.tokenizer.pad_token_id] * (seq_len - len(token_ids))
+            token_ids = token_ids + [self.tokenizer.pad_token_id] * (
+                seq_len - len(token_ids)
+            )
         if len(token_ids) >= seq_len:
             token_ids = token_ids[0:seq_len] if apply_max_len else token_ids
             token_ids[-1] = self.tokenizer.sep_token_id
@@ -273,4 +310,6 @@ class BertTensorizer(Tensorizer):
 
 class RobertaTensorizer(BertTensorizer):
     def __init__(self, tokenizer, max_length: int, pad_to_max: bool = True):
-        super(RobertaTensorizer, self).__init__(tokenizer, max_length, pad_to_max=pad_to_max)
+        super(RobertaTensorizer, self).__init__(
+            tokenizer, max_length, pad_to_max=pad_to_max
+        )

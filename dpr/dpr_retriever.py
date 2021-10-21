@@ -35,7 +35,9 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
     ):
         super().__init__(question_encoder, batch_size, tensorizer, index)
 
-    def _iterate_encoded_files(self, vector_files: list, path_id_prefixes: List = None) -> Iterator[Tuple]:
+    def _iterate_encoded_files(
+        self, vector_files: list, path_id_prefixes: List = None
+    ) -> Iterator[Tuple]:
         for i, file in enumerate(vector_files):
             logger.info("Reading file %s", file)
             id_prefix = None
@@ -49,13 +51,15 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
                         doc[0] = "{0}-{1}".format(id_prefix, str(doc[0]))
                     yield doc
 
-    def _get_encoded_ctx_files(self, encoded_ctx_files: List[str], id_prefixes: List[str]) -> (List[str], List[str]):
+    def _get_encoded_ctx_files(
+        self, encoded_ctx_files: List[str], id_prefixes: List[str]
+    ) -> (List[str], List[str]):
         """
         Collect all the encoded context files and corresponding document id prefix before loading them into the index
         """
-        assert len(encoded_ctx_files) == len(id_prefixes), "ctx len={} pref leb={}".format(
-            len(encoded_ctx_files), len(id_prefixes)
-        )
+        assert len(encoded_ctx_files) == len(
+            id_prefixes
+        ), "ctx len={} pref leb={}".format(len(encoded_ctx_files), len(id_prefixes))
 
         input_paths = []
         path_id_prefixes = []
@@ -83,10 +87,14 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
         :param buffer_size: size of a buffer (amount of passages) to send for the indexing at once
         :return:
         """
-        vector_files, doc_prefixes = self._get_encoded_ctx_files(vector_files, doc_prefixes)
+        vector_files, doc_prefixes = self._get_encoded_ctx_files(
+            vector_files, doc_prefixes
+        )
 
         buffer = []
-        for i, item in enumerate(self._iterate_encoded_files(vector_files, path_id_prefixes=doc_prefixes)):
+        for i, item in enumerate(
+            self._iterate_encoded_files(vector_files, path_id_prefixes=doc_prefixes)
+        ):
             buffer.append(item)
             if 0 < buffer_size == len(buffer):
                 self.index.index_data(buffer)
@@ -94,7 +102,9 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
         self.index.index_data(buffer)
         logger.info("Data indexing completed.")
 
-    def get_top_docs(self, query_vectors, top_docs: int = 100) -> List[Tuple[List[object], List[float]]]:
+    def get_top_docs(
+        self, query_vectors, top_docs: int = 100
+    ) -> List[Tuple[List[object], List[float]]]:
         """
         Does the retrieval of the best matching passages given the query vectors batch
         :param query_vectors:
@@ -108,33 +118,45 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
         self.index = None
         return results
 
-    def generate_question_vectors(self, questions: List[str], query_token: str = None, ) -> T:
+    def generate_question_vectors(
+        self,
+        questions: List[str],
+        query_token: str = None,
+    ) -> T:
         n = len(questions)
         query_vectors = []
 
         with torch.no_grad():
             for j, batch_start in enumerate(range(0, n, self.batch_size)):
-                batch_questions = questions[batch_start: batch_start + self.batch_size]
+                batch_questions = questions[batch_start : batch_start + self.batch_size]
 
                 if query_token:
                     # TODO: tmp workaround for EL, remove or revise
                     if query_token == "[START_ENT]":
                         batch_token_tensors = [
-                            _select_span_with_token(q, self.tensorizer, token_str=query_token) for q in batch_questions
+                            _select_span_with_token(
+                                q, self.tensorizer, token_str=query_token
+                            )
+                            for q in batch_questions
                         ]
                     else:
                         batch_token_tensors = [
-                            self.tensorizer.text_to_tensor(" ".join([query_token, q])) for q in batch_questions
+                            self.tensorizer.text_to_tensor(" ".join([query_token, q]))
+                            for q in batch_questions
                         ]
                 else:
-                    batch_token_tensors = [self.tensorizer.text_to_tensor(q) for q in batch_questions]
+                    batch_token_tensors = [
+                        self.tensorizer.text_to_tensor(q) for q in batch_questions
+                    ]
 
                 q_ids_batch = torch.stack(batch_token_tensors, dim=0).cuda()
                 q_seg_batch = torch.zeros_like(q_ids_batch).cuda()
                 q_attn_mask = self.tensorizer.get_attn_mask(q_ids_batch)
 
                 if self.selector:
-                    rep_positions = self.selector.get_positions(q_ids_batch, self.tensorizer)
+                    rep_positions = self.selector.get_positions(
+                        q_ids_batch, self.tensorizer
+                    )
 
                     _, out, _ = BiEncoder.get_representation(
                         self.question_encoder,
@@ -144,7 +166,9 @@ class DRPLocalFaissDenseRetriever(DenseRetriever):
                         representation_token_pos=rep_positions,
                     )
                 else:
-                    _, out, _ = self.question_encoder(q_ids_batch, q_seg_batch, q_attn_mask)
+                    _, out, _ = self.question_encoder(
+                        q_ids_batch, q_seg_batch, q_attn_mask
+                    )
 
                 query_vectors.extend(out.cpu().split(1, dim=0))
 

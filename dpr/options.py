@@ -72,7 +72,11 @@ def setup_cfg_gpu(cfg):
     cfg.distributed_world_size = int(ws) if ws else 1
     logger.info("WORLD_SIZE %s", ws)
     if cfg.local_rank == -1 or cfg.no_cuda:  # single-node multi-gpu (or cpu) mode
-        device = str(torch.device("cuda" if torch.cuda.is_available() and not cfg.no_cuda else "cpu"))
+        device = str(
+            torch.device(
+                "cuda" if torch.cuda.is_available() and not cfg.no_cuda else "cpu"
+            )
+        )
         cfg.n_gpu = torch.cuda.device_count()
     else:  # distributed mode
         torch.cuda.set_device(cfg.local_rank)
@@ -98,7 +102,9 @@ def setup_logger(logger):
     logger.setLevel(logging.INFO)
     if logger.hasHandlers():
         logger.handlers.clear()
-    log_formatter = logging.Formatter("[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    log_formatter = logging.Formatter(
+        "[%(thread)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
     console = logging.StreamHandler()
     console.setFormatter(log_formatter)
     logger.addHandler(console)

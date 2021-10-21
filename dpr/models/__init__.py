@@ -35,16 +35,19 @@ def init_hf_coil_question_encoder(args, **kwargs):
         raise RuntimeError("Please install transformers lib")
 
     # update args from default
-    parser = HfArgumentParser((COILModelArguments, COILDataArguments, TrainingArguments))
+    parser = HfArgumentParser(
+        (COILModelArguments, COILDataArguments, TrainingArguments)
+    )
     model_args, data_args, training_args = parser.parse_dict(dict(args.encoder))
     params = {
         "model_args": model_args,
         "data_args": data_args,
-        "training_args": training_args
+        "training_args": training_args,
     }
     encoder_args = to_namedtuple(params)
 
     from coil.models.coil_model import get_coil_question_encoder_components
+
     return get_coil_question_encoder_components(encoder_args, **kwargs)
 
 

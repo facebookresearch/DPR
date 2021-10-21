@@ -28,7 +28,9 @@ def get_roberta_biencoder_components(args, inference_only: bool = False, **kwarg
     question_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
     ctx_encoder = RobertaEncoder.from_pretrained(args.pretrained_file)
     biencoder = BiEncoder(question_encoder, ctx_encoder)
-    optimizer = get_fairseq_adamw_optimizer(biencoder, args) if not inference_only else None
+    optimizer = (
+        get_fairseq_adamw_optimizer(biencoder, args) if not inference_only else None
+    )
 
     tensorizer = get_roberta_tensorizer(args)
 
@@ -50,7 +52,9 @@ class RobertaEncoder(nn.Module):
         model = FaiseqRobertaModel.from_pretrained(pretrained_dir_path)
         return cls(model)
 
-    def forward(self, input_ids: T, token_type_ids: T, attention_mask: T) -> Tuple[T, ...]:
+    def forward(
+        self, input_ids: T, token_type_ids: T, attention_mask: T
+    ) -> Tuple[T, ...]:
         roberta_out = self.fairseq_roberta.extract_features(input_ids)
         cls_out = roberta_out[:, 0, :]
         return roberta_out, cls_out, None

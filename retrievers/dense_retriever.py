@@ -18,14 +18,18 @@ from coil.coil_retriever import COILDenseRetriever
 from dpr.dpr_retriever import DRPLocalFaissDenseRetriever
 from dpr.models import init_question_encoder_components
 from dpr.options import set_cfg_params_from_state, setup_cfg_gpu, setup_logger
-from dpr.utils.model_utils import (get_model_obj, load_states_from_checkpoint, setup_for_distributed_mode)
+from dpr.utils.model_utils import (
+    get_model_obj,
+    load_states_from_checkpoint,
+    setup_for_distributed_mode,
+)
 
 logger = logging.getLogger()
 setup_logger(logger)
 
 SUPPORTED_RETRIEVERS = {
-    'dpr': DRPLocalFaissDenseRetriever,
-    'coil': COILDenseRetriever,
+    "dpr": DRPLocalFaissDenseRetriever,
+    "coil": COILDenseRetriever,
 }
 
 
@@ -38,7 +42,9 @@ def load_state_dict_to_model(saved_state, model, encoder_prefix=None):
 
         prefix_len = len(encoder_prefix)
         state_to_load = {
-            key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith(encoder_prefix)
+            key[prefix_len:]: value
+            for (key, value) in saved_state.model_dict.items()
+            if key.startswith(encoder_prefix)
         }
 
     model.load_state_dict(state_to_load, strict=False)
@@ -51,10 +57,12 @@ def main(cfg: DictConfig):
     logger.info("%s", OmegaConf.to_yaml(cfg))
 
     tensorizer, question_encoder, _ = init_question_encoder_components(
-        cfg.encoder.encoder_model_type, cfg, inference_only=True)
+        cfg.encoder.encoder_model_type, cfg, inference_only=True
+    )
 
     question_encoder, _ = setup_for_distributed_mode(
-        question_encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16)
+        question_encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16
+    )
 
     question_encoder.eval()
 
@@ -105,10 +113,14 @@ def main(cfg: DictConfig):
     retriever = retriever_class(question_encoder, cfg.batch_size, tensorizer, index)
 
     logger.info("Using special token %s", cfg.special_query_token)
-    questions_tensor = retriever.generate_question_vectors(questions, query_token=cfg.special_query_token)
+    questions_tensor = retriever.generate_question_vectors(
+        questions, query_token=cfg.special_query_token
+    )
 
     logger.info("Loading encoded document into index")
-    retriever.load_encoded_index_data(cfg.encoded_ctx_files, index_buffer_sz, doc_prefixes=cfg.doc_prefixes)
+    retriever.load_encoded_index_data(
+        cfg.encoded_ctx_files, index_buffer_sz, doc_prefixes=cfg.doc_prefixes
+    )
 
     # get top k results
     top_ids_and_scores = retriever.get_top_docs(questions_tensor, cfg.n_docs)
@@ -119,7 +131,8 @@ def main(cfg: DictConfig):
         results.append((q, doc_id, score))
 
     print(results)
-    import pdb;
+    import pdb
+
     pdb.set_trace()
 
 

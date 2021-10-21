@@ -18,7 +18,9 @@ def validate(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
-    match_stats = calculate_matches(passages, answers, result_ctx_ids, workers_num, match_type)
+    match_stats = calculate_matches(
+        passages, answers, result_ctx_ids, workers_num, match_type
+    )
     top_k_hits = match_stats.top_k_hits
 
     logger.info("Validation results: top k documents hits %s", top_k_hits)
@@ -75,7 +77,9 @@ def validate_tables(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
-    match_stats = calculate_chunked_matches(passages, answers, result_ctx_ids, workers_num, match_type)
+    match_stats = calculate_chunked_matches(
+        passages, answers, result_ctx_ids, workers_num, match_type
+    )
     top_k_chunk_hits = match_stats.top_k_chunk_hits
     top_k_table_hits = match_stats.top_k_table_hits
 
@@ -88,6 +92,7 @@ def validate_tables(
     logger.info("Validation results: top k tables accuracy %s", top_k_table_hits)
 
     return match_stats.top_k_chunk_hits
+
 
 """
 Get more usage information from dense_retriever.py
