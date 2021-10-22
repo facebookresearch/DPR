@@ -729,7 +729,7 @@ def _do_biencoder_fwd_pass(
     if cfg.n_gpu > 1:
         loss = loss.mean()
     if cfg.train.gradient_accumulation_steps > 1:
-        loss = loss / cfg.gradient_accumulation_steps
+        loss = loss / cfg.train.gradient_accumulation_steps
     return loss, is_correct
 
 
