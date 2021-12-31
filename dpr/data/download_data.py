@@ -453,6 +453,7 @@ def download(resource_key: str, out_dir: str = None):
     if resource_key not in RESOURCES_MAP:
         # match by prefix
         resources = [k for k in RESOURCES_MAP.keys() if k.startswith(resource_key)]
+        print("matched by prefix resources: ", resources)
         if resources:
             for key in resources:
                 download(key, out_dir)
