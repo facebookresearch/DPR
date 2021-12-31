@@ -459,37 +459,38 @@ def download(resource_key: str, out_dir: str = None):
         else:
             logger.info("no resources found for specified key")
         return []
-    download_info = RESOURCES_MAP[resource_key]
+    else:
+        download_info = RESOURCES_MAP[resource_key]
 
-    s3_url = download_info["s3_url"]
+        s3_url = download_info["s3_url"]
 
-    save_root_dir = None
-    data_files = []
-    if isinstance(s3_url, list):
-        for i, url in enumerate(s3_url):
+        save_root_dir = None
+        data_files = []
+        if isinstance(s3_url, list):
+            for i, url in enumerate(s3_url):
+                save_root_dir, local_file = download_resource(
+                    url,
+                    download_info["original_ext"],
+                    download_info["compressed"],
+                    "{}_{}".format(resource_key, i),
+                    out_dir,
+                )
+                data_files.append(local_file)
+        else:
             save_root_dir, local_file = download_resource(
-                url,
+                s3_url,
                 download_info["original_ext"],
                 download_info["compressed"],
-                "{}_{}".format(resource_key, i),
+                resource_key,
                 out_dir,
             )
             data_files.append(local_file)
-    else:
-        save_root_dir, local_file = download_resource(
-            s3_url,
-            download_info["original_ext"],
-            download_info["compressed"],
-            resource_key,
-            out_dir,
-        )
-        data_files.append(local_file)
 
-    license_files = download_info.get("license_files", None)
-    if license_files:
-        download_file(license_files[0], save_root_dir, "LICENSE")
-        download_file(license_files[1], save_root_dir, "README")
-    return data_files
+        license_files = download_info.get("license_files", None)
+        if license_files:
+            download_file(license_files[0], save_root_dir, "LICENSE")
+            download_file(license_files[1], save_root_dir, "README")
+        return data_files
 
 
 def main():
@@ -512,7 +513,7 @@ def main():
     else:
         print("Please specify resource value. Possible options are:")
         for k, v in RESOURCES_MAP.items():
-            print("Resource key=%s  :  %s", k, v["desc"])
+            print("Resource key=%s  :  %s" % (k, v["desc"]))
 
 
 if __name__ == "__main__":
