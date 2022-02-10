@@ -56,8 +56,7 @@ def init_hf_roberta_tenzorizer(args, **kwargs):
     if importlib.util.find_spec("transformers") is None:
         raise RuntimeError("Please install transformers lib")
     from .hf_models import get_roberta_tensorizer
-
-    return get_roberta_tensorizer(args)
+    return get_roberta_tensorizer(args.encoder.pretrained_model_cfg, args.do_lower_case, args.encoder.sequence_length)
 
 
 BIENCODER_INITIALIZERS = {

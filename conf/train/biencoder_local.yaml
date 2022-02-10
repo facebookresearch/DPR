@@ -1,6 +1,6 @@
 # @package _group_
 
-batch_size: 4
+batch_size: 1
 dev_batch_size: 16
 adam_eps: 1e-8
 adam_betas: (0.9, 0.999)

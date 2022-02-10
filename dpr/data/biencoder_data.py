@@ -1,110 +1,19 @@
 import collections
-import csv
 import glob
 import logging
 import os
 import random
 from typing import Dict, List, Tuple
 
-import hydra
 import jsonlines
 import numpy as np
-import torch
 from omegaconf import DictConfig
-from torch import Tensor as T
 
 from dpr.data.tables import Table
-from dpr.utils.data_utils import read_data_from_json_files, Tensorizer
+from dpr.utils.data_utils import read_data_from_json_files, Dataset
 
 logger = logging.getLogger(__name__)
 BiEncoderPassage = collections.namedtuple("BiEncoderPassage", ["text", "title"])
-
-
-class BiEncoderSample(object):
-    query: str
-    positive_passages: List[BiEncoderPassage]
-    negative_passages: List[BiEncoderPassage]
-    hard_negative_passages: List[BiEncoderPassage]
-
-
-class RepTokenSelector(object):
-    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
-        raise NotImplementedError
-
-
-class RepStaticPosTokenSelector(RepTokenSelector):
-    def __init__(self, static_position: int = 0):
-        self.static_position = static_position
-
-    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
-        return self.static_position
-
-
-class RepSpecificTokenSelector(RepTokenSelector):
-    def __init__(self, token: str = "[CLS]"):
-        self.token = token
-        self.token_id = None
-
-    def get_positions(self, input_ids: T, tenzorizer: Tensorizer):
-        if not self.token_id:
-            self.token_id = tenzorizer.get_token_id(self.token)
-        token_indexes = (input_ids == self.token_id).nonzero()
-        # check if all samples in input_ids has index presence and out a default value otherwise
-        bsz = input_ids.size(0)
-        if bsz == token_indexes.size(0):
-            return token_indexes
-
-        token_indexes_result = []
-        found_idx_cnt = 0
-        for i in range(bsz):
-            if found_idx_cnt < token_indexes.size(0) and token_indexes[found_idx_cnt][0] == i:
-                # this samples has the special token
-                token_indexes_result.append(token_indexes[found_idx_cnt])
-                found_idx_cnt += 1
-            else:
-                logger.warning("missing special token %s", input_ids[i])
-
-                token_indexes_result.append(
-                    torch.tensor([i, 0]).to(input_ids.device)
-                )  # setting 0-th token, i.e. CLS for BERT as the special one
-        token_indexes_result = torch.stack(token_indexes_result, dim=0)
-        return token_indexes_result
-
-
-DEFAULT_SELECTOR = RepStaticPosTokenSelector()
-
-
-class Dataset(torch.utils.data.Dataset):
-    def __init__(
-        self,
-        selector: DictConfig = None,
-        special_token: str = None,
-        shuffle_positives: bool = False,
-        query_special_suffix: str = None,
-        encoder_type: str = None,
-    ):
-        if selector:
-            self.selector = hydra.utils.instantiate(selector)
-        else:
-            self.selector = DEFAULT_SELECTOR
-        self.special_token = special_token
-        self.encoder_type = encoder_type
-        self.shuffle_positives = shuffle_positives
-        self.query_special_suffix = query_special_suffix
-
-    def load_data(self):
-        raise NotImplementedError
-
-    def __getitem__(self, index) -> BiEncoderSample:
-        raise NotImplementedError
-
-    def _process_query(self, query: str):
-        # as of now, always normalize query
-        query = normalize_question(query)
-        if self.query_special_suffix and not query.endswith(self.query_special_suffix):
-            query += self.query_special_suffix
-
-        return query
 
 
 def get_dpr_files(source_name) -> List[str]:
@@ -113,8 +22,14 @@ def get_dpr_files(source_name) -> List[str]:
     else:
         # try to use data downloader
         from dpr.data.download_data import download
-
         return download(source_name)
+
+
+class BiEncoderSample(object):
+    query: str
+    positive_passages: List[BiEncoderPassage]
+    negative_passages: List[BiEncoderPassage]
+    hard_negative_passages: List[BiEncoderPassage]
 
 
 class JsonQADataset(Dataset):
@@ -127,6 +42,8 @@ class JsonQADataset(Dataset):
         shuffle_positives: bool = False,
         normalize: bool = False,
         query_special_suffix: str = None,
+        # tmp: for cc-net results only
+        exclude_gold: bool = False,
     ):
         super().__init__(
             selector,
@@ -137,16 +54,29 @@ class JsonQADataset(Dataset):
         )
         self.file = file
         self.data_files = []
-        self.data = []
         self.normalize = normalize
-        logger.info("Data files: %s", self.data_files)
+        self.exclude_gold = exclude_gold
 
-    def load_data(self):
+    def calc_total_data_len(self):
+        if not self.data:
+            logger.info("Loading all data")
+            self._load_all_data()
+        return len(self.data)
+
+    def load_data(self, start_pos: int = -1, end_pos: int = -1):
+        if not self.data:
+            self._load_all_data()
+        if start_pos >= 0 and end_pos >= 0:
+            logger.info("Selecting subset range from %d to %d", start_pos, end_pos)
+            self.data = self.data[start_pos:end_pos]
+
+    def _load_all_data(self):
         self.data_files = get_dpr_files(self.file)
+        logger.info("Data files: %s", self.data_files)
         data = read_data_from_json_files(self.data_files)
         # filter those without positive ctx
         self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
-        logger.info("Total cleaned data size: {}".format(len(self.data)))
+        logger.info("Total cleaned data size: %d", len(self.data))
 
     def __getitem__(self, index) -> BiEncoderSample:
         json_sample = self.data[index]
@@ -154,6 +84,11 @@ class JsonQADataset(Dataset):
         r.query = self._process_query(json_sample["question"])
 
         positive_ctxs = json_sample["positive_ctxs"]
+        if self.exclude_gold:
+            ctxs = [ctx for ctx in positive_ctxs if "score" in ctx]
+            if ctxs:
+                positive_ctxs = ctxs
+
         negative_ctxs = json_sample["negative_ctxs"] if "negative_ctxs" in json_sample else []
         hard_negative_ctxs = json_sample["hard_negative_ctxs"] if "hard_negative_ctxs" in json_sample else []
 
@@ -172,27 +107,77 @@ class JsonQADataset(Dataset):
         r.hard_negative_passages = [create_passage(ctx) for ctx in hard_negative_ctxs]
         return r
 
-    def __len__(self):
-        return len(self.data)
 
-    def get_qas(self) -> Tuple[List[str], List[str]]:
-        return [s["question"] for s in self.data], [s["answers"] for s in self.data]
-
-    def get_qas_range(self, start_idx: int, end_idx: int) -> Tuple[List[str], List[str]]:
-        return (
-            [s["question"] for s in self.data[start_idx:end_idx]],
-            [s["answers"] for s in self.data[start_idx:end_idx]],
+class JsonlQADataset(JsonQADataset):
+    def __init__(
+        self,
+        file: str,
+        selector: DictConfig = None,
+        special_token: str = None,
+        encoder_type: str = None,
+        shuffle_positives: bool = False,
+        normalize: bool = False,
+        query_special_suffix: str = None,
+        # tmp: for cc-net results only
+        exclude_gold: bool = False,
+        total_data_size: int = -1,
+    ):
+        super().__init__(
+            file,
+            selector,
+            special_token,
+            encoder_type,
+            shuffle_positives,
+            normalize,
+            query_special_suffix,
+            exclude_gold,
         )
+        self.total_data_size = total_data_size
+        self.data_files = get_dpr_files(self.file)
+        logger.info("Data files: %s", self.data_files)
+
+    def calc_total_data_len(self):
+        # TODO: optimize jsonl file read & results caching
+        if self.total_data_size < 0:
+            logger.info("Calculating data size")
+            for file in self.data_files:
+                with jsonlines.open(file, mode="r") as jsonl_reader:
+                    for _ in jsonl_reader:
+                        self.total_data_size += 1
+        logger.info("total_data_size=%d", self.total_data_size)
+        return self.total_data_size
+
+    def load_data(self, start_pos: int = -1, end_pos: int = -1):
+        if self.data:
+            return
+        logger.info("Jsonl loading subset range from %d to %d", start_pos, end_pos)
+        if start_pos < 0 and end_pos < 0:
+            for file in self.data_files:
+                with jsonlines.open(file, mode="r") as jsonl_reader:
+                    self.data.extend([l for l in jsonl_reader])
+            return
+
+        global_sample_id = 0
+        for file in self.data_files:
+            if global_sample_id >= end_pos:
+                break
+            with jsonlines.open(file, mode="r") as jsonl_reader:
+                for jline in jsonl_reader:
+                    if start_pos <= global_sample_id < end_pos:
+                        self.data.append(jline)
+                    if global_sample_id >= end_pos:
+                        break
+                    global_sample_id += 1
+        logger.info("Jsonl loaded data size %d ", len(self.data))
 
 
 def normalize_passage(ctx_text: str):
     ctx_text = ctx_text.replace("\n", " ").replace("’", "'")
+    if ctx_text.startswith('"'):
+        ctx_text = ctx_text[1:]
+    if ctx_text.endswith('"'):
+        ctx_text = ctx_text[:-1]
     return ctx_text
-
-
-def normalize_question(question: str) -> str:
-    question = question.replace("’", "'")
-    return question
 
 
 class Cell:
@@ -412,6 +397,7 @@ def get_table_string_for_answer_check(table: Table):  # this doesn't use caption
     return table_text
 
 
+# TODO: inherit from Jsonl
 class JsonLTablesQADataset(Dataset):
     def __init__(
         self,
@@ -433,15 +419,18 @@ class JsonLTablesQADataset(Dataset):
         self.max_len = max_len
         self.linearize_func = JsonLTablesQADataset.get_lin_func(split_type)
 
-    def load_data(self):
+    def load_data(self, start_pos: int = -1, end_pos: int = -1):
+        # TODO: use JsonlX super class load_data() ?
         data = []
         for path in self.data_files:
             with jsonlines.open(path, mode="r") as jsonl_reader:
                 data += [jline for jline in jsonl_reader]
-
         # filter those without positive ctx
         self.data = [r for r in data if len(r["positive_ctxs"]) > 0]
         logger.info("Total cleaned data size: {}".format(len(self.data)))
+        if start_pos >= 0 and end_pos >= 0:
+            logger.info("Selecting subset range from %d to %d", start_pos, end_pos)
+            self.data = self.data[start_pos:end_pos]
 
     def __getitem__(self, index) -> BiEncoderSample:
         json_sample = self.data[index]
@@ -466,9 +455,6 @@ class JsonLTablesQADataset(Dataset):
             BiEncoderPassage(self.linearize_func(self, ctx, False), ctx["caption"]) for ctx in hard_negative_ctxs
         ]
         return r
-
-    def __len__(self):
-        return len(self.data)
 
     @classmethod
     def get_lin_func(cls, split_type: str):

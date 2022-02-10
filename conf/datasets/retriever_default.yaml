@@ -3,6 +3,7 @@
 nq_test:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.nq-test
+  #query_special_suffix: '?'
 
 nq_train:
   _target_: dpr.data.retriever_data.CsvQASrc
@@ -27,7 +28,8 @@ trivia_dev:
 webq_test:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.webq-test
-  
+
 curatedtrec_test:
   _target_: dpr.data.retriever_data.CsvQASrc
   file: data.retriever.qas.curatedtrec-test
+

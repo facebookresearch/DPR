@@ -31,16 +31,15 @@ squad1_dev:
 webq_train:
   _target_: dpr.data.biencoder_data.JsonQADataset
   file: data.retriever.webq-train
-  
+
 webq_dev:
   _target_: dpr.data.biencoder_data.JsonQADataset
   file: data.retriever.webq-dev
-  
+
 curatedtrec_train:
   _target_: dpr.data.biencoder_data.JsonQADataset
   file: data.retriever.curatedtrec-train
-  
+
 curatedtrec_dev:
   _target_: dpr.data.biencoder_data.JsonQADataset
   file: data.retriever.curatedtrec-dev
-    

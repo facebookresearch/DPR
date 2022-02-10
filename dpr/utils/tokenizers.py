@@ -164,7 +164,8 @@ class SimpleTokenizer(Tokenizer):
             annotators: None or empty set (only tokenizes).
         """
         self._regexp = regex.compile(
-            "(%s)|(%s)" % (self.ALPHA_NUM, self.NON_WS), flags=regex.IGNORECASE + regex.UNICODE + regex.MULTILINE
+            "(%s)|(%s)" % (self.ALPHA_NUM, self.NON_WS),
+            flags=regex.IGNORECASE + regex.UNICODE + regex.MULTILINE,
         )
         if len(kwargs.get("annotators", {})) > 0:
             logger.warning(
@@ -205,14 +206,13 @@ class SpacyTokenizer(Tokenizer):
             annotators: set that can include pos, lemma, and ner.
             model: spaCy model to use (either path, or keyword like 'en').
         """
-        model = kwargs.get("model", "en_core_web_sm")
+        model = kwargs.get("model", "en_core_web_sm")  # TODO: replace with en ?
         self.annotators = copy.deepcopy(kwargs.get("annotators", set()))
         nlp_kwargs = {"parser": False}
         if not any([p in self.annotators for p in ["lemma", "pos", "ner"]]):
             nlp_kwargs["tagger"] = False
         if "ner" not in self.annotators:
             nlp_kwargs["entity"] = False
-
         self.nlp = spacy.load(model, **nlp_kwargs)
 
     def tokenize(self, text):

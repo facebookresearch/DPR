@@ -14,7 +14,6 @@ loss_scale_factors:
 # Whether to lower case the input text. Set True for uncased models, False for the cased ones.
 do_lower_case: True
 
-fix_ctx_encoder: False
 val_av_rank_start_epoch: 30
 seed: 12345
 checkpoint_file_name: dpr_biencoder
@@ -24,11 +23,15 @@ model_file:
 
 # TODO: move to a conf group
 # local_rank for distributed training on gpus
+
+# TODO: rename to distributed_rank
 local_rank: -1
 global_loss_buf_sz: 592000
 device:
 distributed_world_size:
 distributed_port:
+distributed_init_method:
+
 no_cuda: False
 n_gpu:
 fp16: False
@@ -42,6 +45,10 @@ special_tokens:
 
 ignore_checkpoint_offset: False
 ignore_checkpoint_optimizer: False
+ignore_checkpoint_lr: False
 
 # set to >1 to enable multiple query encoders
 multi_q_encoder: False
+
+# Set to True to reduce memory footprint and loose a bit the full train data randomization if you train in DDP mode
+local_shards_dataloader: False

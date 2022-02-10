@@ -50,7 +50,14 @@ kilt_out_file:
 model_file:
 
 validate_as_tables: False
+
+# RPC settings
 rpc_retriever_cfg_file:
+rpc_index_id:
+use_l2_conversion: False
+use_rpc_meta: False
+rpc_meta_compressed: False
+
 indexer: flat
 
 # tokens which won't be slit by tokenizer
@@ -62,6 +69,7 @@ local_rank: -1
 global_loss_buf_sz: 150000
 device:
 distributed_world_size:
+distributed_port:
 no_cuda: False
 n_gpu:
 fp16: False
@@ -69,3 +77,4 @@ fp16: False
 # For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
 #        "See details at https://nvidia.github.io/apex/amp.html
 fp16_opt_level: O1
+

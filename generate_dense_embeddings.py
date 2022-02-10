@@ -119,7 +119,7 @@ def main(cfg: DictConfig):
     ctx_state = {
         key[prefix_len:]: value for (key, value) in saved_state.model_dict.items() if key.startswith("ctx_model.")
     }
-    model_to_load.load_state_dict(ctx_state)
+    model_to_load.load_state_dict(ctx_state, strict=False)
 
     logger.info("reading data source: %s", cfg.ctx_src)
 

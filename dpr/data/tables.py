@@ -2,24 +2,24 @@ import collections
 import csv
 import json
 import logging
-import re
 import unicodedata
 
 import jsonlines
 import spacy as spacy
 from typing import List, Dict
+from dpr.data.qa_validation import regex_match
 
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 if logger.hasHandlers():
     logger.handlers.clear()
-
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 console = logging.StreamHandler()
 console.setFormatter(log_formatter)
-
 logger.addHandler(console)
+
+nlp = spacy.load("en_core_web_sm", disable=["parser", "tagger", "ner", "entity_ruler"])
 
 
 class Cell:
@@ -195,26 +195,15 @@ def read_nq_tables_jsonl(path: str, out_file: str = None) -> Dict[str, Table]:
             if "( hide ) This section has multiple issues" in " ".join(tokens):
                 tables_with_issues += 1
                 continue
-            # if '<Table>' in tokens[1:]:
-            #    nested_tables += 1
-
             mask = jline["html_mask"]
-            page_url = jline["doc_url"]
+            # _page_url = jline["doc_url"]
             title = jline["title"]
-            # logger.info('Table from page %s', title)
-            # logger.info('tokens len %s', len(tokens))
-            # logger.info('tokens %s', tokens)
-            # logger.info('page_url %s', page_url)
             p = NQTableParser(tokens, mask, title)
             tables = p.parse()
 
-            # logger.info('parsed tables %d', len(tables))
-
-            # table = parse_table(tokens, mask)
             nested_tables += len(tables[1:])
 
             for t in tables:
-                # logger.info('Table: %s', t)
                 total_tables += 1
 
                 # calc amount of non empty rows
@@ -232,10 +221,11 @@ def read_nq_tables_jsonl(path: str, out_file: str = None) -> Dict[str, Table]:
             if len(tables_dict) % 1000 == 0:
                 logger.info("tables_dict %d", len(tables_dict))
 
-    print("regular tables", regular_tables)
-    print("tables_with_issues", tables_with_issues)
-    print("single_row_tables", single_row_tables)
-    print("nested_tables", nested_tables)
+    logger.info("regular tables %d", regular_tables)
+    logger.info("tables_with_issues %d", tables_with_issues)
+    logger.info("single_row_tables %d", single_row_tables)
+    logger.info("nested_tables %d", nested_tables)
+
     if out_file:
         convert_to_csv_for_lucene(tables_dict, out_file)
     return tables_dict
@@ -276,11 +266,7 @@ def convert_jsonl_to_qas_tsv(path, out):
         writer = csv.writer(csvfile, delimiter="\t")
         for r in results:
             writer.writerow([r[0], r[1]])
-
     logger.info("Saved to %s", out)
-
-
-nlp = spacy.load("en_core_web_sm", disable=["parser", "tagger", "ner", "entity_ruler"])
 
 
 def tokenize(text):
@@ -302,26 +288,9 @@ def prepare_answers(answers) -> List[List[str]]:
     return r
 
 
-def has_prepared_answer(prep_answers: List[List[str]], text):
+def has_prepared_answer(prep_answers: List[List[str]], text: List[str]):
     """Check if a document contains an answer string."""
-    text = normalize(text)
-    # Answer is a list of possible strings
-    text = tokenize(text)
-    for single_answer in prep_answers:
-        for i in range(0, len(text) - len(single_answer) + 1):
-            if single_answer == text[i : i + len(single_answer)]:
-                return True
-    return False
-
-
-def has_prepared_answer2(prep_answers: List[List[str]], text: List[str]):
     text = [normalize(token).lower() for token in text]
-
-    # text = [item for sublist in text for item in sublist]
-
-    # text = ' '.join(text)
-    # text = normalize(text)
-    # text = tokenize(text)
 
     for single_answer in prep_answers:
         for i in range(0, len(text) - len(single_answer) + 1):
@@ -377,11 +346,8 @@ def convert_search_res_to_dpr_and_eval(
             total += 1
             q = row[0]
             answers = eval(row[1])
-
             prep_answers = prepare_answers(answers)
             qas.append((q, prep_answers))
-            # logger.info('question %s', q)
-
             question_hns = []
             question_positives = []
             answers_table_links = []
@@ -389,14 +355,11 @@ def convert_search_res_to_dpr_and_eval(
             for k, bm25result in enumerate(row[2:]):
                 score, id = bm25result.split(",")
                 table = db[int(id)]
-
                 answer_locations = []
 
                 def check_answer(tokens, row_idx: int, cell_idx: int):
-                    if has_prepared_answer2(prep_answers, tokens):
+                    if has_prepared_answer(prep_answers, tokens):
                         answer_locations.append((row_idx, cell_idx))
-
-                # logger.info('table %s', table)
 
                 # get string representation to find answer
                 if (len(question_positives) >= 10 and len(question_hns) >= 10) or (len(question_hns) >= 30):
@@ -407,13 +370,8 @@ def convert_search_res_to_dpr_and_eval(
                 has_answer = len(answer_locations) > 0
 
                 if has_answer:
-                    # has_answer(answers, table.key)
-                    # has_answer(answers, get_table_string_for_answer_check(table))
-                    # bm25_per_topk_hits[k:] += 1
-
                     question_positives.append(table)
                     answers_table_links.append(answer_locations)
-                    # break
                 else:
                     question_hns.append(table)
 
@@ -435,19 +393,14 @@ def convert_search_res_to_dpr_and_eval(
                 prep_answers = qas_tuple[1]
                 question_gold_positive_match = None
                 q = qas_tuple[0]
-
-                # logger.info("q=%s q_id=%s", q, q_id)
                 answers_links = None
                 for field in row[1:]:
                     psg_id = int(field.split()[0])
-                    # logger.info("psg_id=%s", psg_id)
-                    # if psg_id >= len(db):
-                    #    continue
                     table = db[psg_id]
                     answer_locations = []
 
                     def check_answer(tokens, row_idx: int, cell_idx: int):
-                        if has_prepared_answer2(prep_answers, tokens):
+                        if has_prepared_answer(prep_answers, tokens):
                             answer_locations.append((row_idx, cell_idx))
 
                     table.visit(check_answer)
@@ -464,7 +417,6 @@ def convert_search_res_to_dpr_and_eval(
                     question_positives.insert(0, question_gold_positive_match)
                     ans_links.insert(0, answers_links)
 
-    # return
     out_results = []
     with jsonlines.open(nq_table_file, mode="r") as jsonl_reader:
         for jline in jsonl_reader:
@@ -485,7 +437,7 @@ def convert_search_res_to_dpr_and_eval(
                 answer_locations = []
 
                 def check_answer(tokens, row_idx: int, cell_idx: int):
-                    if has_prepared_answer2(prep_answers, tokens):
+                    if has_prepared_answer(prep_answers, tokens):
                         answer_locations.append((row_idx, cell_idx))
 
                 t.visit(check_answer)
@@ -496,7 +448,6 @@ def convert_search_res_to_dpr_and_eval(
 
             if not tables_with_answers:
                 logger.info("No answer in gold table(s) for q=%s", q)
-                # tables_with_answers.append(tables[0])
 
             positive_ctxs, hard_neg_ctxs, answers_table_links = dpr_results[q]
             positive_ctxs = positive_ctxs + tables_with_answers
@@ -524,9 +475,6 @@ def convert_search_res_to_dpr_and_eval(
     with jsonlines.open(out_file, mode="w") as writer:  # encoding="utf-8", .encode('utf-8')
         for r in out_results:
             writer.write(r)
-
-    # with open(out_file, "w") as writer:
-    #    writer.write(json.dumps(out_results, indent=4) + "\n")  # indent=4
 
     logger.info("Saved to %s", out_file)
 
@@ -652,11 +600,3 @@ def convert_train_jsonl_to_ctxmatch(path: str, out_file: str):
                 writer.write({"id": s + i, "question": item[0], "context": item[1]})
         shard += 1
 
-
-def regex_match(text, pattern):
-    """Test if a regex pattern is contained within a text."""
-    try:
-        pattern = re.compile(pattern, flags=re.IGNORECASE + re.UNICODE + re.MULTILINE)
-    except BaseException:
-        return False
-    return pattern.search(text) is not None

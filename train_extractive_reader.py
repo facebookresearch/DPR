@@ -72,11 +72,11 @@ class ReaderTrainer(object):
         model_file = get_model_file(self.cfg, self.cfg.checkpoint_file_name)
         saved_state = None
         if model_file:
+            logger.info("!! model_file = %s", model_file)
             saved_state = load_states_from_checkpoint(model_file)
             set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
         tensorizer, reader, optimizer = init_reader_components(cfg.encoder.encoder_model_type, cfg)
-
         reader, optimizer = setup_for_distributed_mode(
             reader,
             optimizer,
@@ -106,7 +106,6 @@ class ReaderTrainer(object):
         shuffle_seed: int = 0,
         offset: int = 0,
     ) -> ShardedDataIterator:
-
         run_preprocessing = True if self.distributed_factor == 1 or self.cfg.local_rank in [-1, 0] else False
 
         gold_passages_src = self.cfg.gold_passages_src
@@ -136,6 +135,7 @@ class ReaderTrainer(object):
             shuffle_seed=shuffle_seed,
             offset=offset,
         )
+        iterator.calculate_shards()
 
         # apply deserialization hook
         iterator.apply(lambda sample: sample.on_deserialize())
@@ -224,13 +224,16 @@ class ReaderTrainer(object):
                 cfg.max_n_answers,
                 is_train=False,
                 shuffle=False,
+                sep_token_id=self.tensorizer.tokenizer.sep_token_id,  # TODO: tmp
             )
 
             input = ReaderBatch(**move_to_device(input._asdict(), cfg.device))
             attn_mask = self.tensorizer.get_attn_mask(input.input_ids)
 
             with torch.no_grad():
-                start_logits, end_logits, relevance_logits = self.reader(input.input_ids, attn_mask)
+                start_logits, end_logits, relevance_logits = self.reader(
+                    input.input_ids, attn_mask, input.token_type_ids
+                )
 
             batch_predictions = self._get_best_prediction(
                 start_logits,
@@ -299,6 +302,7 @@ class ReaderTrainer(object):
                 cfg.max_n_answers,
                 is_train=True,
                 shuffle=True,
+                sep_token_id=self.tensorizer.tokenizer.sep_token_id,  # TODO: tmp
             )
 
             loss = self._calc_loss(input)
@@ -393,7 +397,7 @@ class ReaderTrainer(object):
         model_to_load = get_model_obj(self.reader)
         if saved_state.model_dict:
             logger.info("Loading model weights from saved state ...")
-            model_to_load.load_state_dict(saved_state.model_dict)
+            model_to_load.load_state_dict(saved_state.model_dict, strict=False)
 
         logger.info("Loading saved optimizer state ...")
         if saved_state.optimizer_dict:
@@ -474,10 +478,10 @@ class ReaderTrainer(object):
         questions_num, passages_per_question, _ = input.input_ids.size()
 
         if self.reader.training:
-            # start_logits, end_logits, rank_logits = self.reader(input.input_ids, attn_mask)
             loss = self.reader(
                 input.input_ids,
                 attn_mask,
+                input.token_type_ids,
                 input.start_positions,
                 input.end_positions,
                 input.answers_mask,
@@ -486,7 +490,7 @@ class ReaderTrainer(object):
         else:
             # TODO: remove?
             with torch.no_grad():
-                start_logits, end_logits, rank_logits = self.reader(input.input_ids, attn_mask)
+                start_logits, end_logits, rank_logits = self.reader(input.input_ids, attn_mask, input.token_type_ids)
 
             loss = compute_loss(
                 input.start_positions,

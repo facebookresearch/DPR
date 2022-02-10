@@ -21,10 +21,11 @@ from torch.nn import CrossEntropyLoss
 
 from dpr.data.reader_data import ReaderSample, ReaderPassage
 from dpr.utils.model_utils import init_weights
-
 logger = logging.getLogger()
 
-ReaderBatch = collections.namedtuple("ReaderBatch", ["input_ids", "start_positions", "end_positions", "answers_mask"])
+ReaderBatch = collections.namedtuple(
+    "ReaderBatch", ["input_ids", "start_positions", "end_positions", "answers_mask", "token_type_ids"]
+)
 
 
 class Reader(nn.Module):
@@ -35,11 +36,21 @@ class Reader(nn.Module):
         self.qa_classifier = nn.Linear(hidden_size, 1)
         init_weights([self.qa_outputs, self.qa_classifier])
 
-    def forward(self, input_ids: T, attention_mask: T, start_positions=None, end_positions=None, answer_mask=None):
+    def forward(
+        self,
+        input_ids: T,
+        attention_mask: T,
+        toke_type_ids: T,
+        start_positions=None,
+        end_positions=None,
+        answer_mask=None,
+    ):
         # notations: N - number of questions in a batch, M - number of passages per questions, L - sequence length
         N, M, L = input_ids.size()
         start_logits, end_logits, relevance_logits = self._forward(
-            input_ids.view(N * M, L), attention_mask.view(N * M, L)
+            input_ids.view(N * M, L),
+            attention_mask.view(N * M, L),
+            toke_type_ids.view(N * M, L),
         )
         if self.training:
             return compute_loss(
@@ -48,9 +59,8 @@ class Reader(nn.Module):
 
         return start_logits.view(N, M, L), end_logits.view(N, M, L), relevance_logits.view(N, M)
 
-    def _forward(self, input_ids, attention_mask):
-        # TODO: provide segment values
-        sequence_output, _pooled_output, _hidden_states = self.encoder(input_ids, None, attention_mask)
+    def _forward(self, input_ids, attention_mask, toke_type_ids: T):
+        sequence_output, _pooled_output, _hidden_states = self.encoder(input_ids, toke_type_ids, attention_mask)
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
@@ -109,6 +119,7 @@ def create_reader_input(
     max_n_answers: int,
     is_train: bool,
     shuffle: bool,
+    sep_token_id: int,
 ) -> ReaderBatch:
     """
     Creates a reader batch instance out of a list of ReaderSample-s
@@ -125,6 +136,7 @@ def create_reader_input(
     start_positions = []
     end_positions = []
     answers_masks = []
+    token_type_ids = []
     empty_sequence = torch.Tensor().new_full((max_length,), pad_token_id, dtype=torch.long)
 
     for sample in samples:
@@ -138,26 +150,29 @@ def create_reader_input(
             empty_sequence,
             max_n_answers,
             pad_token_id,
+            sep_token_id,
             is_train,
             is_random=shuffle,
         )
         if not sample_tensors:
-            logger.warning("No valid passages combination for question=%s ", sample.question)
+            logger.debug("No valid passages combination for question=%s ", sample.question)
             continue
-        sample_input_ids, starts_tensor, ends_tensor, answer_mask = sample_tensors
+        sample_input_ids, starts_tensor, ends_tensor, answer_mask, sample_ttids = sample_tensors
         input_ids.append(sample_input_ids)
+        token_type_ids.append(sample_ttids)
         if is_train:
             start_positions.append(starts_tensor)
             end_positions.append(ends_tensor)
             answers_masks.append(answer_mask)
     input_ids = torch.cat([ids.unsqueeze(0) for ids in input_ids], dim=0)
+    token_type_ids = torch.cat([ids.unsqueeze(0) for ids in token_type_ids], dim=0)  # .unsqueeze(0)
 
     if is_train:
         start_positions = torch.stack(start_positions, dim=0)
         end_positions = torch.stack(end_positions, dim=0)
         answers_masks = torch.stack(answers_masks, dim=0)
 
-    return ReaderBatch(input_ids, start_positions, end_positions, answers_masks)
+    return ReaderBatch(input_ids, start_positions, end_positions, answers_masks, token_type_ids)
 
 
 def _calc_mml(loss_tensor):
@@ -196,8 +211,10 @@ def _create_question_passages_tensors(
     empty_ids: T,
     max_n_answers: int,
     pad_token_id: int,
+    sep_token_id: int,
     is_train: bool,
     is_random: bool = True,
+    first_segment_ttid: int = 0,
 ):
     max_len = empty_ids.size(0)
     if is_train:
@@ -239,9 +256,33 @@ def _create_question_passages_tensors(
     negative_idxs = negative_idxs[: total_size - positives_num]
 
     negatives_selected = [_pad_to_len(negatives[i].sequence_ids, pad_token_id, max_len) for i in negative_idxs]
-
-    while len(negatives_selected) < total_size - positives_num:
-        negatives_selected.append(empty_ids.clone())
+    negatives_num = len(negatives_selected)
 
     input_ids = torch.stack([t for t in positives_selected + negatives_selected], dim=0)
-    return input_ids, answer_starts_tensor, answer_ends_tensor, answer_mask
+
+    toke_type_ids = _create_token_type_ids(input_ids, sep_token_id, first_segment_ttid)
+
+    if positives_num + negatives_num < total_size:
+        empty_negatives = [empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num + negatives_num))]
+        empty_token_type_ids = [
+            empty_ids.clone().view(1, -1) for _ in range(total_size - (positives_num + negatives_num))
+        ]
+
+        input_ids = torch.cat([input_ids, *empty_negatives], dim=0)
+        toke_type_ids = torch.cat([toke_type_ids, *empty_token_type_ids], dim=0)
+
+    return input_ids, answer_starts_tensor, answer_ends_tensor, answer_mask, toke_type_ids
+
+
+def _create_token_type_ids(input_ids: torch.Tensor, sep_token_id: int, first_segment_ttid: int = 0):
+
+    token_type_ids = torch.full(input_ids.shape, fill_value=0)
+    # return token_type_ids
+    sep_tokens_indexes = torch.nonzero(input_ids == sep_token_id)
+    bsz = input_ids.size(0)
+    second_ttid = 0 if first_segment_ttid == 1 else 1
+
+    for i in range(bsz):
+        token_type_ids[i, 0 : sep_tokens_indexes[2 * i, 1] + 1] = first_segment_ttid
+        token_type_ids[i, sep_tokens_indexes[2 * i, 1] + 1 :] = second_ttid
+    return token_type_ids

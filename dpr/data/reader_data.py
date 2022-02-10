@@ -17,14 +17,19 @@ import math
 import multiprocessing
 import os
 import pickle
-import torch
-
 from functools import partial
 from typing import Tuple, List, Dict, Iterable, Optional
+
+import torch
 from torch import Tensor as T
 from tqdm import tqdm
 
-from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files
+from dpr.utils.data_utils import (
+    Tensorizer,
+    read_serialized_data_from_files,
+    read_data_from_json_files,
+    Dataset as DprDataset,
+)
 
 logger = logging.getLogger()
 
@@ -118,9 +123,17 @@ class ExtractiveReaderDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data)
 
+    def calc_total_data_len(self):
+        if not self.data:
+            self.load_data()
+        return len(self.data)
+
     def load_data(
         self,
     ):
+        if self.data:
+            return
+
         data_files = glob.glob(self.files)
         logger.info("Data files: %s", data_files)
         if not data_files:
@@ -207,7 +220,7 @@ ReaderPreprocessingCfg = collections.namedtuple(
 DEFAULT_PREPROCESSING_CFG_TRAIN = ReaderPreprocessingCfg(
     use_tailing_sep=False,
     skip_no_positves=True,
-    include_gold_passage=False,
+    include_gold_passage=False,  # True - for speech Q&A
     gold_page_only_positives=True,
     max_positives=20,
     max_negatives=50,
@@ -235,7 +248,6 @@ def preprocess_retriever_data(
     :return: iterable of ReaderSample objects which can be consumed by the reader model
     """
     sep_tensor = tensorizer.get_pair_separator_ids()  # separator can be a multi token
-
     gold_passage_map, canonical_questions = _get_gold_ctx_dict(gold_info_file) if gold_info_file else ({}, {})
 
     no_positive_passages = 0
@@ -261,13 +273,14 @@ def preprocess_retriever_data(
 
     for sample in samples:
         question = sample["question"]
+        question_txt = sample["query_text"] if "query_text" in sample else question
 
-        if question in canonical_questions:
-            question = canonical_questions[question]
+        if canonical_questions and question_txt in canonical_questions:
+            question_txt = canonical_questions[question_txt]
 
         positive_passages, negative_passages = _select_reader_passages(
             sample,
-            question,
+            question_txt,
             tensorizer,
             gold_passage_map,
             cfg.gold_page_only_positives,
@@ -407,7 +420,7 @@ def _select_reader_passages(
     sample: Dict,
     question: str,
     tensorizer: Tensorizer,
-    gold_passage_map: Dict[str, ReaderPassage],
+    gold_passage_map: Optional[Dict[str, ReaderPassage]],
     gold_page_only_positives: bool,
     max_positives: int,
     max1_negatives: int,
@@ -435,7 +448,7 @@ def _select_reader_passages(
                 positive_samples,
             )
         )
-        if gold_page_only_positives
+        if gold_page_only_positives and gold_passage_map
         else []
     )
 
@@ -457,13 +470,11 @@ def _select_reader_passages(
                 logger.warning(
                     "No answer found in passage id=%s text=%s, answers=%s, question=%s",
                     ctx.id,
-                    ctx.passage_text,
+                    "",  # ctx.passage_text
                     answers,
                     question,
                 )
-
             ctx.has_answer = bool(answers_spans)
-
         return ctx
 
     # check if any of the selected ctx+ has answer spans
@@ -486,13 +497,14 @@ def _select_reader_passages(
     if include_gold_passage and question in gold_passage_map:
         gold_passage = gold_passage_map[question]
         included_gold_passage = next(
-            iter(ctx for ctx in selected_positive_ctxs if ctx.id == gold_passage.id),
+            iter(ctx for ctx in selected_positive_ctxs if ctx.passage_text == gold_passage.passage_text),
             None,
         )
         if not included_gold_passage:
+            gold_passage.has_answer = True
             gold_passage = find_answer_spans(gold_passage)
             if not gold_passage.has_answer:
-                logger.warning("No answer found in gold passage %s", gold_passage)
+                logger.warning("No answer found in gold passage: %s", gold_passage)
             else:
                 selected_positive_ctxs.append(gold_passage)
 
@@ -552,7 +564,6 @@ def _get_gold_ctx_dict(file: str) -> Tuple[Dict[str, ReaderPassage], Dict[str, s
             )
             logger.info("Duplicate question gold info: new ctx =%s ", context)
             logger.info("Duplicate question gold info: old ctx =%s ", rp_exist.passage_text)
-
         gold_passage_infos[question] = rp
         gold_passage_infos[question_from_tokens] = rp
     return gold_passage_infos, original_questions
