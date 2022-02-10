@@ -61,9 +61,9 @@ def init_hf_roberta_tenzorizer(args, **kwargs):
 
 
 def init_audio_mixed_biencoder_components(args, **kwargs):
-    #if importlib.util.find_spec("transformers") is None:
+    # if importlib.util.find_spec("transformers") is None:
     #    raise RuntimeError("Please install transformers lib")
-    #if importlib.util.find_spec("fairseq") is None:
+    # if importlib.util.find_spec("fairseq") is None:
     #    raise RuntimeError("Please install fairseq lib")
     from .mixed_models import get_audio_mixed_biencoder_components
 
