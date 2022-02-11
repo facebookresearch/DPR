@@ -460,6 +460,7 @@ def download(resource_key: str, out_dir: str = None):
     if resource_key not in RESOURCES_MAP:
         # match by prefix
         resources = [k for k in RESOURCES_MAP.keys() if k.startswith(resource_key)]
+        logger.info("matched by prefix resources: %s", resources)
         if resources:
             for key in resources:
                 download(key, out_dir)
@@ -517,9 +518,9 @@ def main():
     if args.resource:
         download(args.resource, args.output_dir)
     else:
-        print("Please specify resource value. Possible options are:")
+        logger.warning("Please specify resource value. Possible options are:")
         for k, v in RESOURCES_MAP.items():
-            print("Resource key=%s  :  %s", k, v["desc"])
+            logger.warning("Resource key=%s  :  %s", k, v["desc"])
 
 
 if __name__ == "__main__":
