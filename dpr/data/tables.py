@@ -600,3 +600,12 @@ def convert_train_jsonl_to_ctxmatch(path: str, out_file: str):
                 writer.write({"id": s + i, "question": item[0], "context": item[1]})
         shard += 1
 
+
+# TODO: tmp copy-paste fix to avoid circular dependency
+def regex_match(text, pattern):
+    """Test if a regex pattern is contained within a text."""
+    try:
+        pattern = re.compile(pattern, flags=re.IGNORECASE + re.UNICODE + re.MULTILINE)
+    except BaseException:
+        return False
+    return pattern.search(text) is not None
