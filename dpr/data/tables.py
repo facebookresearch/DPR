@@ -7,7 +7,6 @@ import unicodedata
 import jsonlines
 import spacy as spacy
 from typing import List, Dict
-from dpr.data.qa_validation import regex_match
 
 
 logger = logging.getLogger()
