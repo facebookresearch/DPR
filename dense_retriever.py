@@ -27,7 +27,6 @@ from torch import nn
 from dpr.utils.data_utils import RepTokenSelector
 from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches, calculate_matches_from_meta
 from dpr.data.retriever_data import KiltCsvCtxSrc, TableChunk
-from dpr.data.speech_data import SpeechQASample
 from dpr.indexer.faiss_indexers import (
     DenseIndexer,
 )
@@ -519,8 +518,6 @@ def main(cfg: DictConfig):
     for i in range(total_queries):
         qa_sample = qa_src[i]
         question, answers = qa_sample.query, qa_sample.answers
-        if isinstance(qa_sample, SpeechQASample):
-            questions_text.append(qa_sample.query_text)
         questions.append(question)
         question_answers.append(answers)
 
