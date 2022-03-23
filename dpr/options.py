@@ -31,11 +31,22 @@ def set_cfg_params_from_state(state: dict, cfg: DictConfig):
     if not state:
         return
     cfg.do_lower_case = state["do_lower_case"]
-    cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
-    cfg.encoder.encoder_model_type = state["encoder_model_type"]
-    cfg.encoder.pretrained_file = state["pretrained_file"]
-    cfg.encoder.projection_dim = state["projection_dim"]
-    cfg.encoder.sequence_length = state["sequence_length"]
+
+    if "encoder" in state:
+        cfg.encoder.encoder_model_type = 'hf_bert'
+        cfg.encoder.encoder_model_typepretrained_model_cfg = 'bert-base-uncased'
+        cfg.encoder.encoder_model_typepretrained_file = None
+        cfg.encoder.encoder_model_typeprojection_dim = 0
+        cfg.encoder.encoder_model_typesequence_length = 256
+        cfg.encoder.encoder_model_typedropout = 0.1
+        cfg.encoder.encoder_model_typefix_ctx_encoder = True
+        cfg.encoder.encoder_model_typepretrained = True
+    else:  # 'old' checkpoints backward compatibility support
+        cfg.encoder.pretrained_model_cfg = state["pretrained_model_cfg"]
+        cfg.encoder.encoder_model_type = state["encoder_model_type"]
+        cfg.encoder.pretrained_file = state["pretrained_file"]
+        cfg.encoder.projection_dim = state["projection_dim"]
+        cfg.encoder.sequence_length = state["sequence_length"]
 
 
 def get_encoder_params_state_from_cfg(cfg: DictConfig):

@@ -1,0 +1,14 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Developer tools
+.vscode/
+
+# Installation files
+*.egg-info/
+eggs/
+.eggs/
+*.egg
+*.mmap
+src/

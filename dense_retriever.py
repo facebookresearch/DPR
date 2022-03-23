@@ -206,13 +206,28 @@ class DenseRPCRetriever(DenseRetriever):
         tensorizer: Tensorizer,
         index_cfg_path: str,
         dim: int,
+        use_l2_conversion: bool = False,
+        nprobe: int = 256,
     ):
         super().__init__(question_encoder, batch_size, tensorizer)
         self.dim = dim
         self.index_id = "dr"
         logger.info("Connecting to index server ...")
         self.index_client = IndexClient(index_cfg_path)
+        self.use_l2_conversion = use_l2_conversion
+        self.nprobe = nprobe
         logger.info("Connected")
+
+    def load_index(self, index_id):
+        self.index_id = index_id
+        logger.info("Loading remote index %s", index_id)
+        idx_cfg = IndexCfg()
+        idx_cfg.nprobe = self.nprobe
+        if self.use_l2_conversion:
+            idx_cfg.metric = "l2"
+        self.index_client.load_index(self.index_id, cfg=idx_cfg, force_reload=False)
+        logger.info("Index loaded")
+        self._wait_index_ready(index_id)
 
     def index_encoded_data(
         self,
@@ -264,14 +279,21 @@ class DenseRPCRetriever(DenseRetriever):
         :param top_docs:
         :return:
         """
+        if self.use_l2_conversion:
+            aux_dim = np.zeros(len(query_vectors), dtype="float32")
+            query_vectors = np.hstack((query_vectors, aux_dim.reshape(-1, 1)))
+            logger.info("query_hnsw_vectors %s", query_vectors.shape)
+            self.index_client.cfg.metric = "l2"
+
         results = []
+        time0 = time.time()
         for i in range(0, query_vectors.shape[0], search_batch):
-            time0 = time.time()
             query_batch = query_vectors[i : i + search_batch]
             logger.info("query_batch: %s", query_batch.shape)
             scores, ids = self.index_client.search(query_batch, top_docs, self.index_id)
             logger.info("index search time: %f sec.", time.time() - time0)
             results.extend([(ids[q], scores[q]) for q in range(len(scores))])
+        logger.info("index search time: %f sec.", time.time() - time0)
         return results
 
     def _wait_index_ready(self, index_id: str):
