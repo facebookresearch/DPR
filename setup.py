@@ -30,7 +30,7 @@ setup(
         "numpy",
         "regex",
         "torch>=1.5.0",
-        "transformers>=2.2.2,<3.1.0",
+        "transformers>=3.0.2,<3.1.0",
         "tqdm>=4.27",
         "wget",
         "spacy>=2.1.8",
