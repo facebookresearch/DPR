@@ -117,7 +117,7 @@ class DenseFlatIndexer(DenseIndexer):
 
 class DenseHNSWFlatIndexer(DenseIndexer):
     """
-    Efficient index for retrieval. Note: default settings are for hugh accuracy but also high RAM usage
+    Efficient index for retrieval. Note: default settings are for high accuracy but also high RAM usage
     """
 
     def __init__(
@@ -200,7 +200,7 @@ class DenseHNSWFlatIndexer(DenseIndexer):
 
 class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
     """
-    Efficient index for retrieval. Note: default settings are for hugh accuracy but also high RAM usage
+    Efficient index for retrieval. Note: default settings are for high accuracy but also high RAM usage
     """
 
     def __init__(
