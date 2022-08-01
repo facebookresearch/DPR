@@ -23,6 +23,7 @@ setup(
     ],
     long_description=readme,
     long_description_content_type="text/markdown",
+    py_modules=[],
     setup_requires=[
         "setuptools>=18.0",
     ],
