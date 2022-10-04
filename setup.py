@@ -21,7 +21,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    py_modules=[],
+    py_modules=["dpr"],
     long_description=readme,
     long_description_content_type="text/markdown",
     setup_requires=[
